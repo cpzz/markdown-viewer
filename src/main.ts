@@ -317,7 +317,9 @@ marked.use({
           return `<p class="plantuml-error">PlantUML encode error: ${escapeHtml(msg)}</p>`;
         }
       }
-      return false;
+      const langClass = lang ? ` class="language-${lang}"` : "";
+      const escaped = escapeHtml(token.text);
+      return `<pre><code${langClass}>${escaped}</code></pre>`;
     },
   },
 });
@@ -544,6 +546,13 @@ function mount(): void {
       ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption"],
       ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
     });
+
+    // Apply Prism syntax highlighting
+    if (typeof Prism !== "undefined") {
+      preview.querySelectorAll("pre code").forEach((block) => {
+        Prism.highlightElement(block);
+      });
+    }
 
     // External links open in new tab
     preview.querySelectorAll("a[href]").forEach((link) => {
