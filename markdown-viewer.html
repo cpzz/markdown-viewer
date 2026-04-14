@@ -178,6 +178,24 @@ main.single-panel .resizer { display: none; }
   font-size: 0.8125rem;
 }
 #preview code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+#preview table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  width: auto;
+  max-width: 100%;
+  overflow: auto;
+  display: block;
+  font-size: 0.875rem;
+}
+#preview th, #preview td {
+  text-align: left;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+#preview thead th {
+  border-bottom: 2px solid var(--fg);
+  font-weight: 600;
+}
 #preview img { height: auto; vertical-align: middle; }
 .plantuml-block {
   margin: 1rem 0;
