@@ -140,7 +140,31 @@ main.single-panel .resizer { display: none; }
   color: var(--fg);
   outline: none;
 }
-#preview-wrap { flex: 1; overflow: auto; padding: 1rem 1.25rem; }
+#preview-wrap { flex: 1; overflow: auto; padding: 1rem 1.25rem; position: relative; }
+#usage-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent);
+  pointer-events: none;
+  text-align: center;
+  padding: 2rem;
+}
+#tab-spaces-num {
+  width: 3em;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  text-align: center;
+}
 #preview { }
 #preview :first-child { margin-top: 0; }
 #preview h1, #preview h2, #preview h3, #preview h4, #preview h5, #preview h6 {
@@ -486,7 +510,23 @@ main.single-panel .resizer { display: none; }
       return result;
     }
 
+    function wrapBarePlantUml(text) {
+      var fenced = [];
+      var placeholder = text.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1\s*$/gm, function(m) {
+        fenced.push(m);
+        return "\x00FENCED" + (fenced.length - 1) + "\x00";
+      });
+      var wrapped = placeholder.replace(
+        /^([ \t]*)@start(uml|ditaa|mindmap|wbs|gantt|salt|json|yaml|ebnf|regex|chronology|board)\b[^\n]*\n[\s\S]*?@end\2\b/gm,
+        function(match, indent) {
+          return indent + "```plantuml\n" + match.trim() + "\n" + indent + "```";
+        }
+      );
+      return wrapped.replace(/\x00FENCED(\d+)\x00/g, function(_, i) { return fenced[i]; });
+    }
+
     var result = markdown;
+    result = wrapBarePlantUml(result);
     result = processTabSets(result);
     result = processNestedGrids(result);
 
@@ -537,8 +577,7 @@ main.single-panel .resizer { display: none; }
     app.innerHTML = 
       '<header>' +
         '<h1>Markdown Viewer</h1>' +
-        '<p class="hint"> [Author: cpzz] </p>' +
-        '<p class="hint"> (Usage: <strong>Drag and Drop</strong> a <code>.md</code> file onto the page, or use <strong>Open file</strong>)</p>' +
+        '<p class="hint" id="filename-display"></p>' +
         '<div class="controls">' +
           '<input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,text/markdown,text/plain" hidden />' +
           '<button type="button" id="btn-open-file" class="btn">Open</button>' +
@@ -548,6 +587,10 @@ main.single-panel .resizer { display: none; }
             '<button type="button" id="btn-toggle-source" class="btn toggle active" aria-pressed="true">Source</button>' +
             '<button type="button" id="btn-toggle-preview" class="btn toggle active" aria-pressed="true">Preview</button>' +
           '</div>' +
+          '<label>' +
+            '<input type="checkbox" id="tab2spaces" checked /> Tab2Spaces' +
+          '</label>' +
+          '<input type="number" id="tab-spaces-num" value="4" min="1" max="16" aria-label="Tab width" />' +
           '<label>' +
             '<span>Format</span>' +
             '<select id="uml-format" aria-label="PlantUML output format">' +
@@ -566,6 +609,7 @@ main.single-panel .resizer { display: none; }
         '<section class="panel" id="panel-preview">' +
           '<label for="preview-wrap">Preview</label>' +
           '<div id="preview-wrap" tabindex="-1">' +
+            '<div id="usage-watermark">Drag and Drop a .md file onto the page, or use Open file</div>' +
             '<article id="preview"></article>' +
           '</div>' +
         '</section>' +
@@ -580,14 +624,71 @@ main.single-panel .resizer { display: none; }
     const btnSaveFile = document.getElementById("btn-save-file");
     const btnToggleSource = document.getElementById("btn-toggle-source");
     const btnTogglePreview = document.getElementById("btn-toggle-preview");
+    const filenameDisplay = document.getElementById("filename-display");
+    const usageWatermark = document.getElementById("usage-watermark");
+    const tab2spacesCheckbox = document.getElementById("tab2spaces");
+    const tabSpacesNum = document.getElementById("tab-spaces-num");
     const panelSource = document.getElementById("panel-source");
     const panelPreview = document.getElementById("panel-preview");
     const resizer = document.getElementById("resizer");
     const main = document.querySelector("main");
 
     var currentFileName = "document.md";
+    var fileOpened = false;
+
+    function updateFilenameDisplay() {
+      filenameDisplay.textContent = fileOpened ? currentFileName : "";
+    }
+
+    function hideWatermark() {
+      if (!fileOpened) {
+        fileOpened = true;
+        usageWatermark.style.display = "none";
+        updateFilenameDisplay();
+      }
+    }
 
     source.value = DEFAULT_MD;
+    updateFilenameDisplay();
+
+    source.addEventListener("keydown", function(e) {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        var start = source.selectionStart;
+        var end = source.selectionEnd;
+        var insert = tab2spacesCheckbox.checked
+          ? " ".repeat(parseInt(tabSpacesNum.value) || 4)
+          : "\t";
+
+        if (start === end) {
+          source.value = source.value.substring(0, start) + insert + source.value.substring(end);
+          source.selectionStart = source.selectionEnd = start + insert.length;
+        } else {
+          var val = source.value;
+          var before = val.substring(0, start);
+          var selected = val.substring(start, end);
+          var after = val.substring(end);
+
+          if (e.shiftKey) {
+            var lines = selected.split("\n");
+            var pattern = tab2spacesCheckbox.checked
+              ? new RegExp("^ {1," + (parseInt(tabSpacesNum.value) || 4) + "}")
+              : /^\t/;
+            var dedented = lines.map(function(line) { return line.replace(pattern, ""); });
+            var newSelected = dedented.join("\n");
+            source.value = before + newSelected + after;
+            source.selectionStart = start;
+            source.selectionEnd = start + newSelected.length;
+          } else {
+            var indented = selected.split("\n").map(function(line) { return insert + line; }).join("\n");
+            source.value = before + indented + after;
+            source.selectionStart = start;
+            source.selectionEnd = start + indented.length;
+          }
+        }
+        scheduleRender();
+      }
+    });
 
     function updateLayout() {
       const showSource = btnToggleSource.classList.contains("active");
@@ -739,10 +840,12 @@ main.single-panel .resizer { display: none; }
     }
 
     function loadFile(file) {
-      currentFileName = file.name || "document.md";
+      currentFileName = file.webkitRelativePath || file.name || "document.md";
       file.text().then(function(text) {
         source.value = text;
         lastSavedContent = text;
+        hideWatermark();
+        updateFilenameDisplay();
         scheduleRender();
       });
     }
@@ -769,6 +872,8 @@ main.single-panel .resizer { display: none; }
           var text = await file.text();
           source.value = text;
           lastSavedContent = text;
+          hideWatermark();
+          updateFilenameDisplay();
           scheduleRender();
           updateReopenButton();
         } catch (e) {
@@ -793,6 +898,8 @@ main.single-panel .resizer { display: none; }
         var text = await file.text();
         source.value = text;
         lastSavedContent = text;
+        hideWatermark();
+        updateFilenameDisplay();
         scheduleRender();
       } catch (e) {
         console.error("Could not reopen file:", e);
@@ -832,6 +939,7 @@ main.single-panel .resizer { display: none; }
           });
           fileHandle = newHandle;
           currentFileName = newHandle.name;
+          updateFilenameDisplay();
           var writable = await newHandle.createWritable();
           await writable.write(content);
           await writable.close();
@@ -862,9 +970,13 @@ main.single-panel .resizer { display: none; }
     btnSaveFile.addEventListener("click", saveFile);
     fileOpenInput.addEventListener("change", function() {
       var file = fileOpenInput.files && fileOpenInput.files[0];
+      var inputPath = fileOpenInput.value;
       fileOpenInput.value = "";
       if (file) {
-        fileHandle = null; // No handle from legacy file input
+        fileHandle = null;
+        if (inputPath && !inputPath.includes("fakepath")) {
+          currentFileName = inputPath;
+        }
         updateReopenButton();
         loadFile(file);
       }
@@ -911,6 +1023,8 @@ main.single-panel .resizer { display: none; }
             var text = await file.text();
             source.value = text;
             lastSavedContent = text;
+            hideWatermark();
+            updateFilenameDisplay();
             scheduleRender();
             updateReopenButton();
             return;
