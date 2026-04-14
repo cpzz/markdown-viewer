@@ -268,7 +268,23 @@ function preprocessMyST(markdown: string): string {
     return result;
   }
 
+  function wrapBarePlantUml(text: string): string {
+    const fenced: string[] = [];
+    const placeholder = text.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1\s*$/gm, (m) => {
+      fenced.push(m);
+      return "\x00FENCED" + (fenced.length - 1) + "\x00";
+    });
+    const wrapped = placeholder.replace(
+      /^([ \t]*)@start(uml|ditaa|mindmap|wbs|gantt|salt|json|yaml|ebnf|regex|chronology|board)\b[^\n]*\n[\s\S]*?@end\2\b/gm,
+      (match, indent: string) => {
+        return indent + "```plantuml\n" + match.trim() + "\n" + indent + "```";
+      }
+    );
+    return wrapped.replace(/\x00FENCED(\d+)\x00/g, (_, i) => fenced[i]);
+  }
+
   let result = markdown;
+  result = wrapBarePlantUml(result);
   result = processTabSets(result);
   result = processNestedGrids(result);
 
@@ -339,7 +355,7 @@ function mount(): void {
   app.innerHTML = `
     <header>
       <h1>Markdown Viewer</h1>
-      <p class="hint">Author: cpzz (Drag a <code>.md</code> file onto the page, or use <strong>Open file</strong>)</p>
+      <p class="hint" id="filename-display"></p>
       <div class="controls">
         <input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,text/markdown,text/plain" hidden />
         <button type="button" id="btn-open-file" class="btn">Open</button>
@@ -349,6 +365,10 @@ function mount(): void {
           <button type="button" id="btn-toggle-source" class="btn toggle active" aria-pressed="true">Source</button>
           <button type="button" id="btn-toggle-preview" class="btn toggle active" aria-pressed="true">Preview</button>
         </div>
+        <label>
+          <input type="checkbox" id="tab2spaces" checked /> Tab2Spaces
+        </label>
+        <input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />
         <label>
           <span>Format</span>
           <select id="uml-format" aria-label="PlantUML output format">
@@ -367,6 +387,7 @@ function mount(): void {
       <section class="panel" id="panel-preview">
         <label for="preview-wrap">Preview</label>
         <div id="preview-wrap" tabindex="-1">
+          <div id="usage-watermark">Drag and Drop a .md file onto the page, or use Open file</div>
           <article id="preview"></article>
         </div>
       </section>
@@ -382,6 +403,10 @@ function mount(): void {
   const btnSaveFile = document.querySelector<HTMLButtonElement>("#btn-save-file")!;
   const btnToggleSource = document.querySelector<HTMLButtonElement>("#btn-toggle-source")!;
   const btnTogglePreview = document.querySelector<HTMLButtonElement>("#btn-toggle-preview")!;
+  const filenameDisplay = document.querySelector<HTMLElement>("#filename-display")!;
+  const usageWatermark = document.querySelector<HTMLElement>("#usage-watermark")!;
+  const tab2spacesCheckbox = document.querySelector<HTMLInputElement>("#tab2spaces")!;
+  const tabSpacesNum = document.querySelector<HTMLInputElement>("#tab-spaces-num")!;
   const panelSource = document.querySelector<HTMLElement>("#panel-source")!;
   const panelPreview = document.querySelector<HTMLElement>("#panel-preview")!;
   const resizer = document.querySelector<HTMLElement>("#resizer")!;
@@ -389,9 +414,61 @@ function mount(): void {
 
   let currentFileName = "document.md";
   let fileHandle: FileSystemFileHandle | null = null;
+  let fileOpened = false;
+
+  function updateFilenameDisplay(): void {
+    filenameDisplay.textContent = fileOpened ? currentFileName : "";
+  }
+
+  function hideWatermark(): void {
+    if (!fileOpened) {
+      fileOpened = true;
+      usageWatermark.style.display = "none";
+      updateFilenameDisplay();
+    }
+  }
 
   source.value = DEFAULT_MD;
+  updateFilenameDisplay();
   plantumlOutputFormat = "svg";
+
+  source.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const start = source.selectionStart;
+      const end = source.selectionEnd;
+      const insert = tab2spacesCheckbox.checked
+        ? " ".repeat(parseInt(tabSpacesNum.value) || 2)
+        : "\t";
+
+      if (start === end) {
+        source.value = source.value.substring(0, start) + insert + source.value.substring(end);
+        source.selectionStart = source.selectionEnd = start + insert.length;
+      } else {
+        const val = source.value;
+        const before = val.substring(0, start);
+        const selected = val.substring(start, end);
+        const after = val.substring(end);
+
+        if (e.shiftKey) {
+          const pattern = tab2spacesCheckbox.checked
+            ? new RegExp("^ {1," + (parseInt(tabSpacesNum.value) || 2) + "}")
+            : /^\t/;
+          const dedented = selected.split("\n").map((line) => line.replace(pattern, ""));
+          const newSelected = dedented.join("\n");
+          source.value = before + newSelected + after;
+          source.selectionStart = start;
+          source.selectionEnd = start + newSelected.length;
+        } else {
+          const indented = selected.split("\n").map((line) => insert + line).join("\n");
+          source.value = before + indented + after;
+          source.selectionStart = start;
+          source.selectionEnd = start + indented.length;
+        }
+      }
+      scheduleRender();
+    }
+  });
 
   function updateLayout(): void {
     const showSource = btnToggleSource.classList.contains("active");
@@ -545,10 +622,12 @@ function mount(): void {
   }
 
   function loadFileIntoEditor(file: File): void {
-    currentFileName = file.name || "document.md";
+    currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name || "document.md";
     void file.text().then((text) => {
       source.value = text;
       lastSavedContent = text;
+      hideWatermark();
+      updateFilenameDisplay();
       scheduleRender();
     });
   }
@@ -576,6 +655,8 @@ function mount(): void {
         const text = await file.text();
         source.value = text;
         lastSavedContent = text;
+        hideWatermark();
+        updateFilenameDisplay();
         scheduleRender();
         updateReopenButton();
       } catch (e) {
@@ -600,6 +681,8 @@ function mount(): void {
       const text = await file.text();
       source.value = text;
       lastSavedContent = text;
+      hideWatermark();
+      updateFilenameDisplay();
       scheduleRender();
     } catch (e) {
       console.error("Could not reopen file:", e);
@@ -641,6 +724,7 @@ function mount(): void {
         });
         fileHandle = newHandle;
         currentFileName = newHandle.name;
+        updateFilenameDisplay();
         const writable = await newHandle.createWritable();
         await writable.write(content);
         await writable.close();
@@ -671,9 +755,13 @@ function mount(): void {
   btnSaveFile.addEventListener("click", () => void saveFile());
   fileOpenInput.addEventListener("change", () => {
     const file = fileOpenInput.files?.[0];
+    const inputPath = fileOpenInput.value;
     fileOpenInput.value = "";
     if (file) {
       fileHandle = null;
+      if (inputPath && !inputPath.includes("fakepath")) {
+        currentFileName = inputPath;
+      }
       updateReopenButton();
       loadFileIntoEditor(file);
     }
@@ -732,6 +820,8 @@ function mount(): void {
             const text = await file.text();
             source.value = text;
             lastSavedContent = text;
+            hideWatermark();
+            updateFilenameDisplay();
             scheduleRender();
             updateReopenButton();
             return;
