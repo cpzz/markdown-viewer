@@ -314,7 +314,7 @@ main.single-panel .panel {
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: color-mix(in srgb, Canvas 92%, CanvasText);
+  background: var(--bg);
   overflow: auto;
 }
 

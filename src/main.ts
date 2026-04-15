@@ -47,7 +47,6 @@ function renderPlantUmlBlock(source: string, format: "svg" | "png"): string {
   const alt = "PlantUML diagram (rendered via plantuml.com)";
   return `<figure class="plantuml-block">
   <img src="${safeUrl}" alt="${alt}" loading="lazy" />
-  <figcaption>Rendered with <a href="https://plantuml.com" target="_blank" rel="noopener noreferrer">PlantUML</a> public server.</figcaption>
 </figure>`;
 }
 
