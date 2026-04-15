@@ -300,6 +300,11 @@ main.single-panel .panel {
   vertical-align: middle;
 }
 
+#preview.fit-width img { max-width: 100%; }
+#preview.fit-width table { max-width: 100%; }
+#preview.fit-width pre { max-width: 100%; }
+#preview.fit-width .plantuml-block img { max-width: 100%; }
+
 .plantuml-block img {
   max-width: none;
 }

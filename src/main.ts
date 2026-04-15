@@ -368,6 +368,9 @@ function mount(): void {
           <button type="button" id="btn-toggle-preview" class="btn toggle active" aria-pressed="true">Preview</button>
         </div>
         <label>
+          <input type="checkbox" id="fit-width" checked /> FitWidth
+        </label>
+        <label>
           <input type="checkbox" id="tab2spaces" checked /> Tab2Spaces
         </label>
         <input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />
@@ -407,6 +410,7 @@ function mount(): void {
   const btnTogglePreview = document.querySelector<HTMLButtonElement>("#btn-toggle-preview")!;
   const filenameDisplay = document.querySelector<HTMLElement>("#filename-display")!;
   const usageWatermark = document.querySelector<HTMLElement>("#usage-watermark")!;
+  const fitWidthCheckbox = document.querySelector<HTMLInputElement>("#fit-width")!;
   const tab2spacesCheckbox = document.querySelector<HTMLInputElement>("#tab2spaces")!;
   const tabSpacesNum = document.querySelector<HTMLInputElement>("#tab-spaces-num")!;
   const panelSource = document.querySelector<HTMLElement>("#panel-source")!;
@@ -432,7 +436,12 @@ function mount(): void {
 
   source.value = DEFAULT_MD;
   updateFilenameDisplay();
+  preview.classList.add("fit-width");
   plantumlOutputFormat = "svg";
+
+  fitWidthCheckbox.addEventListener("change", () => {
+    preview.classList.toggle("fit-width", fitWidthCheckbox.checked);
+  });
 
   source.addEventListener("keydown", (e) => {
     if (e.key === "Tab") {
