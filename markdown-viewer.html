@@ -997,12 +997,18 @@ main.single-panel .resizer { display: none; }
         });
       }
 
-      // Make external links open in new tab
+      // Make external links open in new tab, handle relative links
       preview.querySelectorAll("a[href]").forEach(function(link) {
         var href = link.getAttribute("href");
         if (href && (href.startsWith("http://") || href.startsWith("https://"))) {
           link.setAttribute("target", "_blank");
           link.setAttribute("rel", "noopener noreferrer");
+        } else if (href && !href.startsWith("#")) {
+          // Handle relative links (e.g., ./other.md, ../file.md)
+          link.addEventListener("click", function(e) {
+            e.preventDefault();
+            loadRelativeFile(href);
+          });
         }
       });
 
@@ -1072,6 +1078,7 @@ main.single-panel .resizer { display: none; }
 
     var fileHandle = null; // File System Access API handle
     var lastSavedContent = DEFAULT_MD;
+    var currentDirectoryPath = ""; // Store current directory path for relative links
 
     function updateReopenButton() {
       btnReopenFile.disabled = !fileHandle;
@@ -1092,8 +1099,25 @@ main.single-panel .resizer { display: none; }
       });
     }
 
+    // Load relative file by triggering file picker
+    function loadRelativeFile(relativePath) {
+      // Extract just the filename from the path (remove ./ and ../)
+      var fileName = relativePath.replace(/^(\.\/|\.\.\/)+/, "");
+      
+      // Store the expected filename for reference
+      window.pendingRelativeFile = fileName;
+      
+      // Directly trigger the file picker
+      // Browser will remember last directory, making it easy to select the file
+      if (window.showOpenFilePicker) {
+        openFileWithPicker();
+      } else {
+        fileOpenInput.click();
+      }
+    }
+
     // Use File System Access API if available (Chrome/Edge)
-    async function openFileWithPicker() {
+    async function openFileWithPicker(suggestedName) {
       if (window.showOpenFilePicker) {
         try {
           var options = {
@@ -1111,7 +1135,7 @@ main.single-panel .resizer { display: none; }
           fileHandle = handles[0];
           var file = await fileHandle.getFile();
           currentFileName = file.name;
-          var text = await file.text();
+          var text = await fileHandle.getFile().then(f => f.text());
           source.value = text;
           lastSavedContent = text;
           hideWatermark();
@@ -1122,6 +1146,8 @@ main.single-panel .resizer { display: none; }
           if (e.name !== "AbortError") console.error(e);
         }
       } else {
+        // For browsers without File System Access API, use traditional file input
+        // Note: We cannot set default filename, but user can navigate to the file
         fileOpenInput.click();
       }
     }
@@ -1207,7 +1233,9 @@ main.single-panel .resizer { display: none; }
       lastSavedContent = content;
     }
 
-    btnOpenFile.addEventListener("click", openFileWithPicker);
+    btnOpenFile.addEventListener("click", function() {
+      openFileWithPicker();
+    });
     btnReopenFile.addEventListener("click", reopenFile);
     btnSaveFile.addEventListener("click", saveFile);
     fileOpenInput.addEventListener("change", function() {
@@ -1219,6 +1247,23 @@ main.single-panel .resizer { display: none; }
         if (inputPath && !inputPath.includes("fakepath")) {
           currentFileName = inputPath;
         }
+        
+        // Validate if selected file matches the expected relative file
+        if (window.pendingRelativeFile) {
+          var expectedName = window.pendingRelativeFile;
+          var actualName = file.name;
+          if (expectedName !== actualName) {
+            var confirmLoad = confirm("Expected file: " + expectedName + "\n" +
+                                      "Selected file: " + actualName + "\n\n" +
+                                      "Do you want to load this file anyway?");
+            if (!confirmLoad) {
+              window.pendingRelativeFile = null;
+              return;
+            }
+          }
+          window.pendingRelativeFile = null;
+        }
+        
         updateReopenButton();
         loadFile(file);
       }
