@@ -1037,6 +1037,16 @@ main.single-panel .resizer { display: none; }
     }
 
     source.addEventListener("input", scheduleRender);
+    source.addEventListener("change", scheduleRender);
+
+    // Handle browser back/forward navigation (bfcache restore)
+    window.addEventListener("pageshow", function(event) {
+      // Always re-render when page becomes visible, handles bfcache
+      setTimeout(function() {
+        render();
+      }, 10);
+    });
+
     formatSelect.addEventListener("change", function() {
       plantumlOutputFormat = formatSelect.value === "png" ? "png" : "svg";
       scheduleRender();
