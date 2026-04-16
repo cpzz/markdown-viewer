@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -25,7 +25,7 @@
   -moz-osx-font-smoothing: grayscale;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  html:not([data-theme="light"]) {
     --bg: #000000;
     --fg: #f5f5f7;
     --fg-secondary: rgba(255, 255, 255, 0.8);
@@ -35,8 +35,20 @@
     --border: rgba(255, 255, 255, 0.12);
     --surface: #1d1d1f;
     --surface-code: #161617;
-    --nav-bg: rgba(29, 29, 31, 0.72);
+    --nav-bg: rgba(0, 0, 0, 0.8);
   }
+}
+html[data-theme="dark"] {
+  --bg: #000000;
+  --fg: #f5f5f7;
+  --fg-secondary: rgba(255, 255, 255, 0.8);
+  --fg-muted: rgba(255, 255, 255, 0.48);
+  --accent: #2997ff;
+  --accent-link: #2997ff;
+  --border: rgba(255, 255, 255, 0.12);
+  --surface: #1d1d1f;
+  --surface-code: #161617;
+  --nav-bg: rgba(0, 0, 0, 0.8);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); }
@@ -808,8 +820,8 @@ main.single-panel .resizer { display: none; }
           '</label>' +
           '<label>' +
             '<input type="checkbox" id="tab2spaces" checked /> Tab2Spaces' +
+            '<input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />' +
           '</label>' +
-          '<input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />' +
           '<label>' +
             '<span>Format</span>' +
             '<select id="uml-format" aria-label="PlantUML output format">' +
@@ -817,6 +829,7 @@ main.single-panel .resizer { display: none; }
               '<option value="png">PNG</option>' +
             '</select>' +
           '</label>' +
+          '<button type="button" id="btn-theme" class="btn" aria-label="Toggle dark mode" title="Toggle dark mode">&#9728;</button>' +
         '</div>' +
       '</header>' +
       '<main>' +
@@ -852,6 +865,27 @@ main.single-panel .resizer { display: none; }
     const panelPreview = document.getElementById("panel-preview");
     const resizer = document.getElementById("resizer");
     const main = document.querySelector("main");
+    const btnTheme = document.getElementById("btn-theme");
+
+    // ── Theme toggle ──
+    function applyTheme(dark) {
+      document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      btnTheme.textContent = dark ? "\u263E" : "\u2600";
+      btnTheme.title = dark ? "Switch to light mode" : "Switch to dark mode";
+    }
+
+    (function initTheme() {
+      var stored = localStorage.getItem("md-viewer-theme");
+      var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      applyTheme(stored ? stored === "dark" : prefersDark);
+    })();
+
+    btnTheme.addEventListener("click", function() {
+      var isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      applyTheme(!isDark);
+      localStorage.setItem("md-viewer-theme", !isDark ? "dark" : "light");
+    });
+    // ────────────────────
 
     var currentFileName = "document.md";
     var fileOpened = false;

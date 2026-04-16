@@ -370,17 +370,15 @@ function mount(): void {
           <input type="checkbox" id="fit-width" checked /> FitWidth
         </label>
         <label>
-          <input type="checkbox" id="tab2spaces" checked /> Tab2Spaces
+          <input type="checkbox" id="tab2spaces" checked /> Tab2Spaces<input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />
         </label>
-        <input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />
         <label>
           <span>Format</span>
           <select id="uml-format" aria-label="PlantUML output format">
             <option value="svg" selected>SVG</option>
             <option value="png">PNG</option>
           </select>
-        </label>
-      </div>
+        </label>        <button type="button" id="btn-theme" class="btn" aria-label="Toggle dark mode" title="Toggle dark mode">☀</button>      </div>
     </header>
     <main>
       <section class="panel" id="panel-source">
@@ -416,6 +414,27 @@ function mount(): void {
   const panelPreview = document.querySelector<HTMLElement>("#panel-preview")!;
   const resizer = document.querySelector<HTMLElement>("#resizer")!;
   const main = document.querySelector<HTMLElement>("main")!;
+  const btnTheme = document.querySelector<HTMLButtonElement>("#btn-theme")!;
+
+  // ── Theme toggle ────────────────────────────────────────
+  function applyTheme(dark: boolean): void {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    btnTheme.textContent = dark ? "\u263E" : "\u2600";
+    btnTheme.title = dark ? "Switch to light mode" : "Switch to dark mode";
+  }
+
+  (function initTheme(): void {
+    const stored = localStorage.getItem("md-viewer-theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(stored ? stored === "dark" : prefersDark);
+  })();
+
+  btnTheme.addEventListener("click", () => {
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    applyTheme(!isDark);
+    localStorage.setItem("md-viewer-theme", !isDark ? "dark" : "light");
+  });
+  // ────────────────────────────────────────────────────────
 
   let currentFileName = "document.md";
   let fileHandle: FileSystemFileHandle | null = null;
