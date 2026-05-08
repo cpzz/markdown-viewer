@@ -1,7 +1,10 @@
 import DOMPurify from "dompurify";
 import { marked, type Tokens } from "marked";
+import mermaid from "mermaid";
 import * as plantumlEncoderPkg from "plantuml-encoder";
 import "./style.css";
+
+mermaid.initialize({ startOnLoad: false });
 
 /** CJS interop varies by bundler; resolve `encode` from named export or `default.encode`. */
 function resolvePlantumlEncode(): (diagram: string) => string {
@@ -29,6 +32,10 @@ const PLANTUML_BASE = "https://www.plantuml.com/plantuml";
 
 /** Current PlantUML image format; read by the markdown renderer. */
 let plantumlOutputFormat: "svg" | "png" = "svg";
+
+/** Queue of mermaid diagrams to render after marked.parse(); cleared at the start of each render(). */
+let mermaidQueue: Array<{ id: string; source: string }> = [];
+let mermaidRenderSeq = 0;
 
 function normalizePlantUmlSource(text: string): string {
   const t = text.trim();
@@ -316,6 +323,11 @@ marked.use({
           return `<p class="plantuml-error">PlantUML encode error: ${escapeHtml(msg)}</p>`;
         }
       }
+      if (lang === "mermaid") {
+        const id = `mermaid-block-${mermaidQueue.length}`;
+        mermaidQueue.push({ id, source: token.text });
+        return `<figure class="mermaid-block" id="${id}"></figure>`;
+      }
       const langClass = lang ? ` class="language-${lang}"` : "";
       const escaped = escapeHtml(token.text);
       return `<pre><code${langClass}>${escaped}</code></pre>`;
@@ -328,7 +340,9 @@ marked.setOptions({
   breaks: false,
 });
 
-const DEFAULT_MD = `# Markdown + PlantUML
+const DEFAULT_MD = `# Markdown + PlantUML + Mermaid
+
+## PlantUML
 
 Use a fenced block with language \`plantuml\` or \`puml\`:
 
@@ -344,6 +358,26 @@ You can omit \`@startuml\` / \`@enduml\`; they are added automatically:
 \`\`\`puml
 participant "API" as api
 api -> api : validate
+\`\`\`
+
+## Mermaid
+
+Use a fenced block with language \`mermaid\`:
+
+\`\`\`mermaid
+flowchart LR
+  A[Open file] --> B{Valid markdown?}
+  B -- Yes --> C[Render preview]
+  B -- No --> D[Show error]
+\`\`\`
+
+\`\`\`mermaid
+sequenceDiagram
+  participant User
+  participant App
+  User->>App: Open .md file
+  App->>App: Parse markdown
+  App-->>User: Render preview
 \`\`\`
 
 Regular **markdown** and \`inline code\` work as usual.
@@ -433,6 +467,8 @@ function mount(): void {
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
     applyTheme(!isDark);
     localStorage.setItem("md-viewer-theme", !isDark ? "dark" : "light");
+    // Re-render so Mermaid diagrams use the new theme
+    scheduleRender();
   });
   // ────────────────────────────────────────────────────────
 
@@ -565,8 +601,13 @@ function mount(): void {
     updateLayout();
   });
 
+  function getMermaidTheme(): "dark" | "default" {
+    return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+  }
+
   async function render(): Promise<void> {
     headingCount = {};
+    mermaidQueue = [];
     const preprocessed = preprocessMyST(source.value);
     const raw = await marked.parse(preprocessed);
     preview.innerHTML = DOMPurify.sanitize(raw, {
@@ -579,6 +620,25 @@ function mount(): void {
       preview.querySelectorAll("pre code").forEach((block) => {
         Prism.highlightElement(block);
       });
+    }
+
+    // Render Mermaid diagrams via mermaid.render() → SVG string approach (reliable across themes)
+    if (mermaidQueue.length > 0) {
+      mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
+      const seq = ++mermaidRenderSeq;
+      for (let i = 0; i < mermaidQueue.length; i++) {
+        const item = mermaidQueue[i];
+        const el = preview.querySelector<HTMLElement>(`#${item.id}`);
+        if (!el) continue;
+        try {
+          const svgId = `mermaid-svg-${seq}-${i}`;
+          const { svg } = await mermaid.render(svgId, item.source);
+          el.innerHTML = svg;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          el.innerHTML = `<p class="mermaid-error">Mermaid error: ${escapeHtml(msg)}</p>`;
+        }
+      }
     }
 
     // External links open in new tab

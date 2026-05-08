@@ -397,6 +397,20 @@ main.single-panel .resizer { display: none; }
 .plantuml-block a { color: var(--accent-link); }
 .plantuml-error { color: #ff3b30; font-size: 0.875rem; }
 
+/* Mermaid */
+.mermaid-block {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: auto;
+  text-align: center;
+}
+.mermaid-block svg { max-width: 100%; height: auto; }
+.mermaid-error { color: #ff3b30; font-size: 0.875rem; }
+#preview.fit-width .mermaid-block svg { max-width: 100%; }
+
 /* MyST Tab Set */
 .myst-tab-set {
   margin: 1rem 0;
@@ -493,11 +507,18 @@ main.single-panel .resizer { display: none; }
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-markdown.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-docker.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-nginx.min.js"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    window.__mermaid = mermaid;
+    mermaid.initialize({ startOnLoad: false });
+  </script>
 
   <script>
 (function() {
   const PLANTUML_BASE = "https://www.plantuml.com/plantuml";
   let plantumlOutputFormat = "svg";
+  var mermaidQueue = [];
+  var mermaidRenderSeq = 0;
 
   function normalizePlantUmlSource(text) {
     const t = text.trim();
@@ -785,6 +806,11 @@ main.single-panel .resizer { display: none; }
             return '<p class="plantuml-error">PlantUML encode error: ' + escapeHtml(e.message) + '</p>';
           }
         }
+        if (lang === "mermaid") {
+          var id = "mermaid-block-" + mermaidQueue.length;
+          mermaidQueue.push({ id: id, source: token.text });
+          return '<figure class="mermaid-block" id="' + id + '"></figure>';
+        }
         const langClass = lang ? ' class="language-' + lang + '"' : "";
         const escaped = escapeHtml(token.text);
         return '<pre><code' + langClass + '>' + escaped + '</code></pre>';
@@ -794,9 +820,14 @@ main.single-panel .resizer { display: none; }
 
   marked.setOptions({ gfm: true, breaks: false });
 
-  const DEFAULT_MD = '# Markdown Viewer\n\n' +
+  const DEFAULT_MD = '# Markdown + PlantUML + Mermaid\n\n' +
+    '## PlantUML\n\n' +
     'Use a fenced block with language `plantuml` or `puml`:\n\n' +
     '```plantuml\n@startuml\nAlice -> Bob: hello\nBob --> Alice: hi\n@enduml\n```\n\n' +
+    '## Mermaid\n\n' +
+    'Use a fenced block with language `mermaid`:\n\n' +
+    '```mermaid\nflowchart LR\n  A[Open file] --> B{Valid markdown?}\n  B -- Yes --> C[Render preview]\n  B -- No --> D[Show error]\n```\n\n' +
+    '```mermaid\nsequenceDiagram\n  participant User\n  participant App\n  User->>App: Open .md file\n  App->>App: Parse markdown\n  App-->>User: Render preview\n```\n\n' +
     'Regular **markdown** and `inline code` work as usual.\n';
 
   function mount() {
@@ -884,6 +915,7 @@ main.single-panel .resizer { display: none; }
       var isDark = document.documentElement.getAttribute("data-theme") === "dark";
       applyTheme(!isDark);
       localStorage.setItem("md-viewer-theme", !isDark ? "dark" : "light");
+      scheduleRender();
     });
     // ────────────────────
 
@@ -1013,10 +1045,15 @@ main.single-panel .resizer { display: none; }
       updateLayout();
     });
 
+    function getMermaidTheme() {
+      return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+    }
+
     function render() {
       // Reset heading counter for duplicate ID handling
       headingCount = {};
-      
+      mermaidQueue = [];
+
       var preprocessed = preprocessMyST(source.value);
       const raw = marked.parse(preprocessed);
       preview.innerHTML = DOMPurify.sanitize(raw, {
@@ -1028,6 +1065,23 @@ main.single-panel .resizer { display: none; }
       if (typeof Prism !== "undefined") {
         preview.querySelectorAll("pre code").forEach(function(block) {
           Prism.highlightElement(block);
+        });
+      }
+
+      // Render Mermaid diagrams
+      if (mermaidQueue.length > 0 && window.__mermaid) {
+        var mermaid = window.__mermaid;
+        mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
+        var seq = ++mermaidRenderSeq;
+        var queue = mermaidQueue.slice();
+        queue.forEach(function(item, i) {
+          var el = preview.querySelector("#" + item.id);
+          if (!el) return;
+          mermaid.render("mermaid-svg-" + seq + "-" + i, item.source).then(function(result) {
+            el.innerHTML = result.svg;
+          }).catch(function(e) {
+            el.innerHTML = '<p class="mermaid-error">Mermaid error: ' + escapeHtml(e.message || String(e)) + '</p>';
+          });
         });
       }
 

@@ -427,6 +427,20 @@ main.single-panel .resizer { display: none; }
 .plantuml-block a { color: var(--accent-link); }
 .plantuml-error { color: #ff3b30; font-size: 0.875rem; }
 
+/* Mermaid */
+.mermaid-block {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: auto;
+  text-align: center;
+}
+.mermaid-block svg { max-width: 100%; height: auto; }
+.mermaid-error { color: #ff3b30; font-size: 0.875rem; }
+#preview.fit-width .mermaid-block svg { max-width: 100%; }
+
 /* MyST Tab Set */
 .myst-tab-set {
   margin: 1rem 0;
