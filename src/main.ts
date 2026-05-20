@@ -65,6 +65,186 @@ function escapeHtml(s: string): string {
     .replaceAll('"', "&quot;");
 }
 
+/** File path / name → basename (handles `/` and `\\`). */
+function pathBasename(p: string): string {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i === -1 ? p : p.slice(i + 1);
+}
+
+/** Extension without dot; dotfiles like `.gitignore` → `gitignore`. */
+function pathFileExtension(pathOrName: string): string {
+  const base = pathBasename(pathOrName);
+  if (base.startsWith(".") && base.length > 1) {
+    const rest = base.slice(1);
+    if (!rest.includes(".")) return rest.toLowerCase();
+  }
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot >= base.length - 1) return "";
+  return base.slice(dot + 1).toLowerCase();
+}
+
+/** When true, preview uses Markdown (MyST + marked). Otherwise preview shows raw source with Prism only. */
+const MARKDOWN_DOCUMENT_EXTENSIONS = new Set([
+  "md",
+  "mdx",
+  "markdown",
+  "mdown",
+  "mkd",
+  "qmd",
+  "rmd",
+  "mdc",
+]);
+
+function isMarkdownDocumentPath(pathOrName: string): boolean {
+  const ext = pathFileExtension(pathOrName);
+  return Boolean(ext) && MARKDOWN_DOCUMENT_EXTENSIONS.has(ext);
+}
+
+/** Whole-file preview: exact basename (any path) → Prism id. */
+const SOURCE_BASENAME_TO_PRISM: Record<string, string> = {
+  dockerfile: "docker",
+  containerfile: "docker",
+  jenkinsfile: "groovy",
+  makefile: "bash",
+  gnumakefile: "bash",
+  "cmakelists.txt": "cmake",
+};
+
+const SOURCE_EXT_TO_PRISM: Record<string, string> = {
+  py: "python",
+  pyw: "python",
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  ts: "typescript",
+  tsx: "tsx",
+  jsx: "jsx",
+  css: "css",
+  scss: "css",
+  less: "css",
+  json: "json",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  /** Automake `Makefile.am` and similar */
+  am: "makefile",
+  /** RPM spec (Prism has no rpm; use YAML highlighting) */
+  spec: "yaml",
+  java: "java",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cxx: "cpp",
+  cc: "cpp",
+  hpp: "cpp",
+  hh: "cpp",
+  hxx: "cpp",
+  cs: "csharp",
+  go: "go",
+  rs: "rust",
+  sql: "sql",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  ps1: "powershell",
+  psm1: "powershell",
+  psd1: "powershell",
+  md: "markdown",
+  mdx: "markdown",
+  markdown: "markdown",
+  mdown: "markdown",
+  mkd: "markdown",
+};
+
+const PRISM_LOADED_LANG = new Set([
+  "python",
+  "javascript",
+  "typescript",
+  "jsx",
+  "tsx",
+  "css",
+  "json",
+  "yaml",
+  "java",
+  "c",
+  "cpp",
+  "csharp",
+  "go",
+  "rust",
+  "sql",
+  "bash",
+  "powershell",
+  "markdown",
+  "docker",
+  "nginx",
+  "toml",
+  "makefile",
+  "cmake",
+  "groovy",
+]);
+
+/** First non-empty line after optional UTF-8 BOM (for shebang when suffix is missing or not mapped). */
+function firstNonEmptySourceLine(source: string): string {
+  let s = source;
+  if (s.length > 0 && s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  for (const line of s.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t !== "") return t;
+  }
+  return "";
+}
+
+/** Map `#!/usr/bin/bash`, `#!/usr/bin/env python3`, etc. to a loaded Prism grammar id. */
+function prismLangFromShebangLine(line: string): string | null {
+  if (!line.startsWith("#!")) return null;
+  const rest = line.slice(2).trim();
+  const parts = rest.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  let i = 0;
+  const head = parts[0] ?? "";
+  if (head === "env" || head.endsWith("/env")) {
+    i = 1;
+    while (i < parts.length && (parts[i].includes("=") || parts[i].startsWith("-"))) i++;
+  }
+  const exe = parts[i] ?? "";
+  const bin = pathBasename(exe).toLowerCase();
+  if (!bin) return null;
+
+  if (bin === "sh" || bin === "bash" || bin === "dash" || bin === "zsh" || bin === "fish") return "bash";
+  if (bin === "python" || bin.startsWith("python")) return "python";
+  if (bin === "node" || bin === "nodejs" || bin.startsWith("node")) return "javascript";
+  if (bin === "ts-node" || bin.startsWith("ts-node")) return "typescript";
+  if (bin === "tsx") return "tsx";
+  if (bin === "pwsh" || bin === "powershell") return "powershell";
+  if (bin === "go") return "go";
+
+  return null;
+}
+
+/** Prism grammar for whole-file preview: basename map, then suffix map, then shebang if suffix missing or unknown. */
+function prismLangForSourcePreview(pathOrName: string, source: string): string | null {
+  const baseLower = pathBasename(pathOrName).toLowerCase();
+  const byBase = SOURCE_BASENAME_TO_PRISM[baseLower];
+  if (byBase) return PRISM_LOADED_LANG.has(byBase) ? byBase : null;
+
+  const ext = pathFileExtension(pathOrName);
+  let fromSuffix: string | null = null;
+  if (ext) {
+    const mapped = SOURCE_EXT_TO_PRISM[ext];
+    if (mapped !== undefined) {
+      if (PRISM_LOADED_LANG.has(mapped)) fromSuffix = mapped;
+    } else if (PRISM_LOADED_LANG.has(ext)) {
+      fromSuffix = ext;
+    }
+  }
+  if (fromSuffix) return fromSuffix;
+
+  const bang = prismLangFromShebangLine(firstNonEmptySourceLine(source));
+  if (bang && PRISM_LOADED_LANG.has(bang)) return bang;
+
+  return null;
+}
+
 /** Generate slug for heading IDs (GitHub-style) */
 function slugify(text: string): string {
   return text
@@ -608,6 +788,26 @@ function mount(): void {
   async function render(): Promise<void> {
     headingCount = {};
     mermaidQueue = [];
+
+    if (!isMarkdownDocumentPath(currentFileName)) {
+      const lang = prismLangForSourcePreview(currentFileName, source.value);
+      const escaped = escapeHtml(source.value);
+      const langClass = lang ? ` class="language-${lang}"` : "";
+      preview.innerHTML = DOMPurify.sanitize(
+        `<article class="preview-non-markdown"><pre><code${langClass}>${escaped}</code></pre></article>`,
+        {
+          ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
+          ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
+        },
+      );
+      if (typeof Prism !== "undefined") {
+        preview.querySelectorAll("pre code").forEach((block) => {
+          Prism.highlightElement(block);
+        });
+      }
+      return;
+    }
+
     const preprocessed = preprocessMyST(source.value);
     const raw = await marked.parse(preprocessed);
     preview.innerHTML = DOMPurify.sanitize(raw, {
@@ -834,7 +1034,9 @@ function mount(): void {
     }
 
     // Fallback: download
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([content], {
+      type: isMarkdownDocumentPath(currentFileName) ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

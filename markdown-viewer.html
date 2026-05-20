@@ -507,6 +507,11 @@ main.single-panel .resizer { display: none; }
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-markdown.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-docker.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-nginx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-makefile.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-cmake.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-clike.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-groovy.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-toml.min.js"></script>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
     window.__mermaid = mermaid;
@@ -541,6 +546,117 @@ main.single-panel .resizer { display: none; }
 
   function escapeHtml(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  var MARKDOWN_DOC_EXT = { md: 1, mdx: 1, markdown: 1, mdown: 1, mkd: 1, qmd: 1, rmd: 1, mdc: 1 };
+
+  function pathBasename(p) {
+    var i1 = p.lastIndexOf("/");
+    var i2 = p.lastIndexOf("\\");
+    var i = i1 > i2 ? i1 : i2;
+    return i === -1 ? p : p.slice(i + 1);
+  }
+
+  function pathFileExtension(pathOrName) {
+    var base = pathBasename(pathOrName);
+    if (base.charAt(0) === "." && base.length > 1) {
+      var rest = base.slice(1);
+      if (rest.indexOf(".") === -1) return rest.toLowerCase();
+    }
+    var dot = base.lastIndexOf(".");
+    if (dot <= 0 || dot >= base.length - 1) return "";
+    return base.slice(dot + 1).toLowerCase();
+  }
+
+  function isMarkdownDocumentPath(pathOrName) {
+    var ext = pathFileExtension(pathOrName);
+    return !!ext && MARKDOWN_DOC_EXT.hasOwnProperty(ext);
+  }
+
+  var SOURCE_BASENAME_TO_PRISM = {
+    dockerfile: "docker",
+    containerfile: "docker",
+    jenkinsfile: "groovy",
+    makefile: "bash",
+    gnumakefile: "bash",
+    "cmakelists.txt": "cmake"
+  };
+
+  var SOURCE_EXT_TO_PRISM = {
+    py: "python", pyw: "python",
+    js: "javascript", mjs: "javascript", cjs: "javascript",
+    ts: "typescript", tsx: "tsx", jsx: "jsx",
+    css: "css", scss: "css", less: "css",
+    json: "json", yaml: "yaml", yml: "yaml", toml: "toml", am: "makefile", spec: "yaml",
+    java: "java",
+    c: "c", h: "c",
+    cpp: "cpp", cxx: "cpp", cc: "cpp", hpp: "cpp", hh: "cpp", hxx: "cpp",
+    cs: "csharp", go: "go", rs: "rust", sql: "sql",
+    sh: "bash", bash: "bash", zsh: "bash",
+    ps1: "powershell", psm1: "powershell", psd1: "powershell",
+    md: "markdown", mdx: "markdown", markdown: "markdown", mdown: "markdown", mkd: "markdown"
+  };
+
+  var PRISM_LOADED = {
+    python: 1, javascript: 1, typescript: 1, jsx: 1, tsx: 1, css: 1, json: 1, yaml: 1,
+    java: 1, c: 1, cpp: 1, csharp: 1, go: 1, rust: 1, sql: 1, bash: 1, powershell: 1,
+    markdown: 1, docker: 1, nginx: 1, toml: 1, makefile: 1, cmake: 1, groovy: 1
+  };
+
+  function firstNonEmptySourceLine(source) {
+    var s = source;
+    if (s.length > 0 && s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+    var lines = s.split(/\r?\n/);
+    for (var li = 0; li < lines.length; li++) {
+      var t = lines[li].trim();
+      if (t !== "") return t;
+    }
+    return "";
+  }
+
+  function prismLangFromShebangLine(line) {
+    if (line.indexOf("#!") !== 0) return null;
+    var rest = line.slice(2).trim();
+    var parts = rest.split(/\s+/).filter(Boolean);
+    if (!parts.length) return null;
+    var i = 0;
+    var head = parts[0];
+    if (head === "env" || head.slice(-4) === "/env") {
+      i = 1;
+      while (i < parts.length && (parts[i].indexOf("=") !== -1 || parts[i].charAt(0) === "-")) i++;
+    }
+    var exe = parts[i] || "";
+    var bin = pathBasename(exe).toLowerCase();
+    if (!bin) return null;
+    if (bin === "sh" || bin === "bash" || bin === "dash" || bin === "zsh" || bin === "fish") return "bash";
+    if (bin === "python" || bin.indexOf("python") === 0) return "python";
+    if (bin === "node" || bin === "nodejs" || bin.indexOf("node") === 0) return "javascript";
+    if (bin === "ts-node" || bin.indexOf("ts-node") === 0) return "typescript";
+    if (bin === "tsx") return "tsx";
+    if (bin === "pwsh" || bin === "powershell") return "powershell";
+    if (bin === "go") return "go";
+    return null;
+  }
+
+  function prismLangForSourcePreview(pathOrName, source) {
+    var baseLower = pathBasename(pathOrName).toLowerCase();
+    if (SOURCE_BASENAME_TO_PRISM.hasOwnProperty(baseLower)) {
+      var v0 = SOURCE_BASENAME_TO_PRISM[baseLower];
+      return PRISM_LOADED[v0] ? v0 : null;
+    }
+    var ext = pathFileExtension(pathOrName);
+    var fromSuffix = null;
+    if (ext) {
+      if (SOURCE_EXT_TO_PRISM.hasOwnProperty(ext)) {
+        var m0 = SOURCE_EXT_TO_PRISM[ext];
+        if (PRISM_LOADED[m0]) fromSuffix = m0;
+      } else if (PRISM_LOADED[ext]) {
+        fromSuffix = ext;
+      }
+    }
+    if (fromSuffix) return fromSuffix;
+    var bang = prismLangFromShebangLine(firstNonEmptySourceLine(source));
+    return bang && PRISM_LOADED[bang] ? bang : null;
   }
 
   // Generate slug for heading IDs (GitHub-style)
@@ -1054,6 +1170,25 @@ main.single-panel .resizer { display: none; }
       headingCount = {};
       mermaidQueue = [];
 
+      if (!isMarkdownDocumentPath(currentFileName)) {
+        var lang = prismLangForSourcePreview(currentFileName, source.value);
+        var escaped = escapeHtml(source.value);
+        var langClass = lang ? ' class="language-' + lang + '"' : "";
+        preview.innerHTML = DOMPurify.sanitize(
+          '<article class="preview-non-markdown"><pre><code' + langClass + ">" + escaped + "</code></pre></article>",
+          {
+            ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
+            ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"]
+          }
+        );
+        if (typeof Prism !== "undefined") {
+          preview.querySelectorAll("pre code").forEach(function(block) {
+            Prism.highlightElement(block);
+          });
+        }
+        return;
+      }
+
       var preprocessed = preprocessMyST(source.value);
       const raw = marked.parse(preprocessed);
       preview.innerHTML = DOMPurify.sanitize(raw, {
@@ -1309,7 +1444,9 @@ main.single-panel .resizer { display: none; }
       }
 
       // Fallback: download file
-      var blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+      var blob = new Blob([content], {
+        type: isMarkdownDocumentPath(currentFileName) ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8"
+      });
       var url = URL.createObjectURL(blob);
       var a = document.createElement("a");
       a.href = url;

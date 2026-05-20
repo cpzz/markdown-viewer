@@ -7,7 +7,7 @@ A lightweight web-based tool for viewing and rendering Markdown documents with e
 - Live Markdown preview with GitHub Flavored Markdown (GFM) support
 - PlantUML diagram rendering via the official PlantUML public server
 - **MyST (Markedly Structured Text) support**: `{tab-set}`, `{tab-item}`, `{grid}`, `{grid-item}`
-- Drag-and-drop or file picker to load `.md` files
+- Drag-and-drop or file picker to load files; **preview follows the filename suffix**: Markdown (`.md`, `.mdx`, …) is rendered as Markdown; other text/source files are shown as **syntax-highlighted source** only (not parsed as Markdown)
 - **Direct file save** with File System Access API (Chrome/Edge)
 - Toggle Source/Preview panels (show/hide)
 - **Resizable panels** with draggable divider
@@ -52,11 +52,19 @@ Requirements:
 
 ## Usage
 
-### Loading Markdown Files
+### Loading files
 
-- **Drag & drop**: Drag a `.md` file onto the page
-- **File picker**: Click "Open file…" button
-- **Manual**: Type or paste Markdown directly in the editor
+- **Drag & drop** or **Open**: load a file by name (e.g. `README.md`, `app.py`). The **preview** depends on the **suffix** of the current filename (see Features): Markdown extensions use full Markdown + MyST + diagrams; other supported suffixes use **source preview** (escaped HTML + Prism when a grammar is available).
+- **Manual**: You can still type or paste in the editor; the default unsaved document is `document.md` (Markdown preview).
+
+### Preview modes (by extension)
+
+| Filename ends with | Preview behavior |
+|--------------------|------------------|
+| `.md`, `.mdx`, `.markdown`, `.mdown`, `.mkd`, `.qmd`, `.rmd`, `.mdc` | Full Markdown (GFM), MyST, PlantUML, Mermaid |
+| e.g. `.py`, `.ts`, `.json`, `.toml`, `.am` (makefile grammar), `.spec` (YAML grammar), … | Whole buffer as **one code block** with Prism when bundled; **not** parsed as Markdown |
+| Exact basename (case-insensitive): `Dockerfile`, `Containerfile`, `Jenkinsfile`, `Makefile`, `GNUmakefile`, `CMakeLists.txt` | **docker**, **docker**, **groovy**, **bash**, **bash**, **cmake** (whole-file source preview) |
+| No extension, or a **suffix without** a bundled highlighter map | Same **source preview**; if the first non-empty line is a **shebang** (`#!/usr/bin/bash`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`, `#!/usr/bin/go`, …), Prism language is inferred when it matches a bundled grammar (bash, python, JavaScript, TypeScript, TSX, PowerShell, Go) |
 
 ### Show/Hide Panels
 
