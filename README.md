@@ -12,7 +12,8 @@ A lightweight web-based tool for viewing and rendering Markdown documents with e
 - Toggle Source/Preview panels (show/hide)
 - **Resizable panels** with draggable divider
 - SVG or PNG output format for diagrams
-- Internal anchor links and external links open in new tabs
+- Internal anchor links stay in the preview; **http(s)** links open in a new tab
+- **Relative links** to other files (same folder or subfolders, e.g. `./other.md`, `notes/x.md`) open the target in a **new browser window** with this app when you use Chrome or Edge. **Link the project folder** by **dragging a project folder** onto the page, or when you first follow a relative link choose **OK** in the prompt to open the folder picker immediately. After linking, paths resolve under that folder; the new window receives the file via IndexedDB (no server required). **Firefox and Safari** do not support the File System Access API used for this; relative local links will show an explanatory message instead.
 - Dark/light mode support (follows system preference)
 - Responsive layout
 

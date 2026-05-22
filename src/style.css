@@ -73,7 +73,7 @@ body {
 }
 
 #app.drag-active::after {
-  content: "Drop markdown file here";
+  content: "Drop a markdown file or project folder here";
   position: absolute;
   inset: 0;
   z-index: 10;

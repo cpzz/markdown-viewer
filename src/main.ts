@@ -111,6 +111,129 @@ function isMarkdownDocumentPath(pathOrName: string): boolean {
   return Boolean(ext) && MARKDOWN_DOCUMENT_EXTENSIONS.has(ext);
 }
 
+const MDV_TRANSFER_DB = "mdv-fs-transfer";
+const MDV_TRANSFER_STORE = "pending";
+
+function posixDirname(p: string): string {
+  const n = p.replaceAll("\\", "/").replace(/\/+$/, "");
+  const i = n.lastIndexOf("/");
+  return i === -1 ? "" : n.slice(0, i);
+}
+
+function encodePathSegmentsForFakeUrl(dir: string): string {
+  return dir
+    .split("/")
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s))
+    .join("/");
+}
+
+function normalizePathDotDot(segments: string[]): string[] | null {
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (out.length === 0) return null;
+      out.pop();
+    } else {
+      out.push(seg);
+    }
+  }
+  return out;
+}
+
+/**
+ * Resolve a relative href (path part only, no `#fragment`) against the directory that contains
+ * `currentWorkspacePath` (POSIX-style path segments relative to a workspace root).
+ */
+function resolveRelativeLinkToWorkspacePath(currentWorkspacePath: string, hrefPathPart: string): string | null {
+  const raw = hrefPathPart.trim();
+  if (!raw) return null;
+  const normalizedCurrent = currentWorkspacePath.replaceAll("\\", "/");
+  const dir = posixDirname(normalizedCurrent);
+  const baseUrl =
+    dir === "" ? "http://mdv.invalid/" : `http://mdv.invalid/${encodePathSegmentsForFakeUrl(dir)}/`;
+  try {
+    const u = new URL(raw, baseUrl);
+    if (u.hostname !== "mdv.invalid") return null;
+    const pathname = decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+    const parts = pathname.split("/").filter(Boolean);
+    const norm = normalizePathDotDot(parts);
+    return norm ? norm.join("/") : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasNonHttpUrlScheme(href: string): boolean {
+  return /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(href);
+}
+
+function idbOpenTransferDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(MDV_TRANSFER_DB, 1);
+    req.onerror = () => reject(req.error ?? new Error("indexedDB.open failed"));
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(MDV_TRANSFER_STORE)) {
+        req.result.createObjectStore(MDV_TRANSFER_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+  });
+}
+
+async function idbPutFileHandle(id: string, handle: FileSystemFileHandle): Promise<void> {
+  const db = await idbOpenTransferDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(MDV_TRANSFER_STORE, "readwrite");
+      tx.objectStore(MDV_TRANSFER_STORE).put(handle, id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error("idb put failed"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function idbTakeFileHandle(id: string): Promise<FileSystemFileHandle | undefined> {
+  const db = await idbOpenTransferDb();
+  try {
+    return await new Promise<FileSystemFileHandle | undefined>((resolve, reject) => {
+      let out: FileSystemFileHandle | undefined;
+      const tx = db.transaction(MDV_TRANSFER_STORE, "readwrite");
+      const store = tx.objectStore(MDV_TRANSFER_STORE);
+      const g = store.get(id);
+      g.onsuccess = () => {
+        out = g.result as FileSystemFileHandle | undefined;
+        if (out !== undefined) store.delete(id);
+      };
+      tx.oncomplete = () => resolve(out);
+      tx.onerror = () => reject(tx.error ?? new Error("idb take failed"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function getFileHandleForRelativePath(
+  root: FileSystemDirectoryHandle,
+  posixPath: string,
+): Promise<FileSystemFileHandle> {
+  const segments = posixPath.split("/").filter(Boolean);
+  if (segments.length === 0) throw new Error("empty path");
+  let dir = root;
+  for (let i = 0; i < segments.length - 1; i++) {
+    dir = await dir.getDirectoryHandle(segments[i]!);
+  }
+  return dir.getFileHandle(segments[segments.length - 1]!);
+}
+
+/** Firefox / Safari: no `FileSystemFileHandle` from the file picker, so linked local files cannot work. */
+function browserSupportsFileSystemAccessPickers(): boolean {
+  return typeof window.showOpenFilePicker === "function";
+}
+
 /** Whole-file preview: exact basename (any path) → Prism id. */
 const SOURCE_BASENAME_TO_PRISM: Record<string, string> = {
   dockerfile: "docker",
@@ -616,7 +739,7 @@ function mount(): void {
       <section class="panel" id="panel-preview">
         <label for="preview-wrap">Preview</label>
         <div id="preview-wrap" tabindex="-1">
-          <div id="usage-watermark">Drag and Drop a .md file onto the page, or use Open file</div>
+          <div id="usage-watermark">Drag a .md file or a project folder onto the page, or use Open file</div>
           <article id="preview"></article>
         </div>
       </section>
@@ -666,6 +789,7 @@ function mount(): void {
 
   const source = document.querySelector<HTMLTextAreaElement>("#source")!;
   const preview = document.querySelector<HTMLElement>("#preview")!;
+  const previewWrap = document.querySelector<HTMLElement>("#preview-wrap")!;
   const formatSelect = document.querySelector<HTMLSelectElement>("#uml-format")!;
   const fileOpenInput = document.querySelector<HTMLInputElement>("#file-open")!;
   const btnOpenFile = document.querySelector<HTMLButtonElement>("#btn-open-file")!;
@@ -726,6 +850,10 @@ function mount(): void {
 
   let currentFileName = "document.md";
   let fileHandle: FileSystemFileHandle | null = null;
+  /** When set, relative preview links resolve under this directory (via `resolve(currentFileHandle)`). */
+  let workspaceRootHandle: FileSystemDirectoryHandle | null = null;
+  /** Path of the active file relative to `workspaceRootHandle`, using `/` separators. */
+  let currentRelPathInWorkspace: string | null = null;
   let fileOpened = false;
 
   function updateFilenameDisplay(): void {
@@ -992,11 +1120,196 @@ function mount(): void {
     btnReopenFile.disabled = !fileHandle;
   }
 
+  async function refreshWorkspacePath(): Promise<void> {
+    if (!fileHandle) {
+      currentRelPathInWorkspace = null;
+      return;
+    }
+    if (!workspaceRootHandle) {
+      currentRelPathInWorkspace = null;
+      return;
+    }
+    try {
+      const segs = await workspaceRootHandle.resolve(fileHandle);
+      if (!segs) {
+        currentRelPathInWorkspace = null;
+        currentFileName = fileHandle.name;
+        updateFilenameDisplay();
+      } else {
+        currentRelPathInWorkspace = segs.join("/");
+        currentFileName = currentRelPathInWorkspace;
+        updateFilenameDisplay();
+      }
+    } catch (e) {
+      console.warn(e);
+      currentRelPathInWorkspace = null;
+    }
+  }
+
+  async function bindWorkspaceFromPicker(): Promise<boolean> {
+    if (!window.showDirectoryPicker) {
+      alert("Folder linking is not available in this browser. Try Chrome or Edge.");
+      return false;
+    }
+    try {
+      const opts: DirectoryPickerOptions = fileHandle ? { startIn: fileHandle } : {};
+      const dir = await window.showDirectoryPicker(opts);
+      if (fileHandle) {
+        const segs = await dir.resolve(fileHandle);
+        if (!segs) {
+          alert(
+            "That folder does not contain the file you have open. Pick a parent folder (for example your project root) that contains this file.",
+          );
+          return false;
+        }
+        workspaceRootHandle = dir;
+        currentRelPathInWorkspace = segs.join("/");
+        currentFileName = currentRelPathInWorkspace;
+        updateFilenameDisplay();
+        return true;
+      }
+      workspaceRootHandle = dir;
+      currentRelPathInWorkspace = null;
+      alert("Folder linked. Use Open file — the dialog will start in this folder.");
+      return true;
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") console.error(e);
+      return false;
+    }
+  }
+
+  async function ensureWorkspaceForRelativeLinks(): Promise<boolean> {
+    if (!browserSupportsFileSystemAccessPickers()) {
+      alert(
+        "Opening linked local files is not available in this browser. Firefox and Safari do not implement the File System Access API (file handles and folder linking). Use Chrome, Edge, or another Chromium-based browser for this feature.",
+      );
+      return false;
+    }
+    if (!fileHandle) {
+      alert(
+        'Use the "Open file" button and pick your document in the system file dialog. That is required so the app receives a file handle.',
+      );
+      return false;
+    }
+    if (workspaceRootHandle) {
+      try {
+        const segs = await workspaceRootHandle.resolve(fileHandle);
+        if (segs) {
+          currentRelPathInWorkspace = segs.join("/");
+          currentFileName = currentRelPathInWorkspace;
+          updateFilenameDisplay();
+          return true;
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+      const relink = confirm(
+        "The file you have open is not inside your linked folder.\n\nClick OK to open the folder picker and choose a folder that contains this file. Click Cancel to stop.",
+      );
+      if (!relink) return false;
+      return await bindWorkspaceFromPicker();
+    }
+    const proceed = confirm(
+      "Link a folder so relative file links can be resolved.\n\nClick OK to open the system folder picker now and choose a folder that contains your current file. Click Cancel to try later (you can also drag a project folder onto the page).",
+    );
+    if (!proceed) return false;
+    return await bindWorkspaceFromPicker();
+  }
+
+  async function applyFileHandleOpen(h: FileSystemFileHandle): Promise<void> {
+    fileHandle = h;
+    const file = await h.getFile();
+    const text = await file.text();
+    source.value = text;
+    lastSavedContent = text;
+    hideWatermark();
+    updateReopenButton();
+    await refreshWorkspacePath();
+    if (!currentRelPathInWorkspace) {
+      currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || h.name;
+      updateFilenameDisplay();
+    }
+    scheduleRender();
+  }
+
+  async function consumePendingTransferFromUrl(): Promise<void> {
+    const params = new URLSearchParams(window.location.search);
+    const openId = params.get("mdvOpen");
+    if (!openId) return;
+    let h: FileSystemFileHandle | undefined;
+    try {
+      h = await idbTakeFileHandle(openId);
+    } catch (e) {
+      console.warn("Could not read transferred file handle:", e);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("mdvOpen");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    if (h) await applyFileHandleOpen(h);
+  }
+
+  async function openLinkedFileInNewWindow(targetHandle: FileSystemFileHandle): Promise<void> {
+    const id = crypto.randomUUID();
+    try {
+      await idbPutFileHandle(id, targetHandle);
+    } catch (e) {
+      console.error(e);
+      alert("Could not stage the file for a new window (IndexedDB may be unavailable).");
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("mdvOpen", id);
+    const child = window.open(url.toString(), "_blank");
+    if (!child) {
+      const useHere = confirm("Popup blocked. Open the linked file in this window instead?");
+      if (useHere) await applyFileHandleOpen(targetHandle);
+    }
+  }
+
+  previewWrap.addEventListener(
+    "click",
+    (e) => {
+      const el = (e.target as HTMLElement | null)?.closest?.("a[href]");
+      if (!el || !preview.contains(el)) return;
+      const href = el.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+      if (href.startsWith("//")) return;
+      if (href.startsWith("http://") || href.startsWith("https://")) return;
+      if (hasNonHttpUrlScheme(href)) return;
+
+      e.preventDefault();
+      void (async () => {
+        try {
+          if (!(await ensureWorkspaceForRelativeLinks())) return;
+          const base = currentRelPathInWorkspace;
+          if (!base || !workspaceRootHandle) return;
+          const pathPart = href.split("#")[0] ?? "";
+          const resolved = resolveRelativeLinkToWorkspacePath(base, pathPart);
+          if (!resolved) {
+            alert("Could not resolve that link path from the current file.");
+            return;
+          }
+          const target = await getFileHandleForRelativePath(workspaceRootHandle, resolved);
+          await openLinkedFileInNewWindow(target);
+        } catch (err) {
+          console.error(err);
+          alert(
+            "Could not open the linked file. Check that the path exists and stays inside the folder you granted access to.",
+          );
+        }
+      })();
+    },
+    true,
+  );
+
   function isContentModified(): boolean {
     return source.value !== lastSavedContent;
   }
 
   function loadFileIntoEditor(file: File): void {
+    fileHandle = null;
+    workspaceRootHandle = null;
+    currentRelPathInWorkspace = null;
     currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name || "document.md";
     void file.text().then((text) => {
       source.value = text;
@@ -1010,7 +1323,7 @@ function mount(): void {
   async function openFileWithPicker(): Promise<void> {
     if (window.showOpenFilePicker) {
       try {
-        const options: Record<string, unknown> = {
+        const options: OpenFilePickerOptions = {
           types: [
             {
               description: "Markdown files",
@@ -1019,14 +1332,15 @@ function mount(): void {
           ],
           multiple: false,
         };
-        // Use current file handle as startIn to open in same directory
         if (fileHandle) {
           options.startIn = fileHandle;
+        } else if (workspaceRootHandle) {
+          options.startIn = workspaceRootHandle;
         }
-        const handles = await (window.showOpenFilePicker as (opts: unknown) => Promise<FileSystemFileHandle[]>)(options);
-        fileHandle = handles[0];
+        const handles = await window.showOpenFilePicker(options);
+        fileHandle = handles[0]!;
         const file = await fileHandle.getFile();
-        currentFileName = file.name;
+        currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
         const text = await file.text();
         source.value = text;
         lastSavedContent = text;
@@ -1034,6 +1348,7 @@ function mount(): void {
         updateFilenameDisplay();
         scheduleRender();
         updateReopenButton();
+        await refreshWorkspacePath();
       } catch (e) {
         if ((e as Error).name !== "AbortError") console.error(e);
       }
@@ -1052,17 +1367,19 @@ function mount(): void {
 
     try {
       const file = await fileHandle.getFile();
-      currentFileName = file.name;
+      currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
       const text = await file.text();
       source.value = text;
       lastSavedContent = text;
       hideWatermark();
       updateFilenameDisplay();
       scheduleRender();
+      await refreshWorkspacePath();
     } catch (e) {
       console.error("Could not reopen file:", e);
       fileHandle = null;
       updateReopenButton();
+      void refreshWorkspacePath();
     }
   }
 
@@ -1090,6 +1407,7 @@ function mount(): void {
       try {
         const newHandle = await window.showSaveFilePicker({
           suggestedName: currentFileName,
+          startIn: workspaceRootHandle ?? fileHandle ?? undefined,
           types: [
             {
               description: "Markdown files",
@@ -1105,6 +1423,7 @@ function mount(): void {
         await writable.close();
         lastSavedContent = content;
         updateReopenButton();
+        await refreshWorkspacePath();
         return;
       } catch (e) {
         if ((e as Error).name !== "AbortError") console.error(e);
@@ -1186,14 +1505,23 @@ function mount(): void {
       fileDragDepth = 0;
       app.classList.remove("drag-active");
 
-      // Try to get file handle for reopen support (Chrome/Edge)
+      // Try directory or file handle (Chrome/Edge)
       if (e.dataTransfer?.items?.[0]?.getAsFileSystemHandle) {
         try {
           const handle = await e.dataTransfer.items[0].getAsFileSystemHandle();
+          if (handle && handle.kind === "directory") {
+            workspaceRootHandle = handle as FileSystemDirectoryHandle;
+            await refreshWorkspacePath();
+            updateFilenameDisplay();
+            updateReopenButton();
+            scheduleRender();
+            alert("Project folder linked. Use Open file to choose a file inside this folder.");
+            return;
+          }
           if (handle && handle.kind === "file") {
             fileHandle = handle as FileSystemFileHandle;
             const file = await fileHandle.getFile();
-            currentFileName = file.name;
+            currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
             const text = await file.text();
             source.value = text;
             lastSavedContent = text;
@@ -1201,6 +1529,7 @@ function mount(): void {
             updateFilenameDisplay();
             scheduleRender();
             updateReopenButton();
+            await refreshWorkspacePath();
             return;
           }
         } catch (err) {
@@ -1224,7 +1553,11 @@ function mount(): void {
     app.classList.remove("drag-active");
   });
 
-  void render();
+  void (async () => {
+    await consumePendingTransferFromUrl();
+    await refreshWorkspacePath();
+    void render();
+  })();
 }
 
 mount();
