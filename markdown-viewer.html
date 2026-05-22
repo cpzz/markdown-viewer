@@ -51,12 +51,25 @@ html[data-theme="dark"] {
   --nav-bg: rgba(0, 0, 0, 0.8);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); }
+html {
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+}
 
 #app {
-  min-height: 100vh;
+  height: 100%;
+  max-height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   position: relative;
 }
 #app.drag-active::after {
@@ -80,8 +93,8 @@ body { margin: 0; background: var(--bg); color: var(--fg); }
 
 /* Header — translucent glass nav */
 header {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
+  position: relative;
   z-index: 5;
   background: var(--nav-bg);
   backdrop-filter: saturate(180%) blur(20px);
@@ -115,25 +128,6 @@ header .hint {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem 0.75rem;
-}
-.controls label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  color: var(--fg-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.controls select {
-  font: inherit;
-  font-size: 0.75rem;
-  padding: 2px 4px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--fg);
-  cursor: pointer;
 }
 
 /* Buttons — Apple pill style */
@@ -185,7 +179,9 @@ header .hint {
 main {
   flex: 1;
   display: flex;
+  flex-direction: row;
   min-height: 0;
+  overflow: hidden;
 }
 main.single-panel .panel { flex: 1; }
 @media (max-width: 900px) {
@@ -250,10 +246,12 @@ main.single-panel .resizer { display: none; }
 /* Source editor */
 #source {
   flex: 1;
+  min-height: 0;
   margin: 0;
   padding: 1rem;
   border: none;
   resize: none;
+  overflow-y: auto;
   font-family: "SF Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 0.8125rem;
   line-height: 1.5;
@@ -266,6 +264,7 @@ main.single-panel .resizer { display: none; }
 /* Preview */
 #preview-wrap {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 1.25rem 1.5rem;
   position: relative;
@@ -285,18 +284,6 @@ main.single-panel .resizer { display: none; }
   text-align: center;
   padding: 2rem;
 }
-#tab-spaces-num {
-  width: 2.5em;
-  font: inherit;
-  font-size: 0.75rem;
-  padding: 2px 4px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--fg);
-  text-align: center;
-}
-
 /* Preview typography */
 #preview {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -475,6 +462,169 @@ main.single-panel .resizer { display: none; }
 @media (max-width: 600px) {
   .myst-grid { grid-template-columns: 1fr !important; }
   .myst-grid-item { grid-column: span 1 !important; }
+}
+
+.btn--icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  border-color: var(--border);
+  color: var(--fg-secondary);
+}
+
+.btn--icon:hover {
+  border-color: var(--accent);
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.btn--icon svg {
+  display: block;
+  pointer-events: none;
+}
+
+.btn--icon:disabled,
+.btn--icon:disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--fg-muted);
+  border-color: var(--border);
+}
+
+.settings-dialog {
+  padding: 0;
+  border: none;
+  margin: auto;
+  width: 100%;
+  max-width: 100vw;
+  height: 100%;
+  max-height: 100dvh;
+  background: transparent;
+  overflow: hidden;
+}
+
+.settings-dialog::backdrop {
+  background: color-mix(in srgb, var(--fg) 32%, transparent);
+}
+
+.settings-dialog__aligner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 100%;
+  min-width: 100%;
+  padding: 1.25rem;
+}
+
+.settings-dialog__panel {
+  width: min(26rem, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.settings-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-dialog__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.settings-dialog__body {
+  padding: 1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2rem;
+}
+
+.settings-row__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--fg);
+  line-height: 1.35;
+}
+
+.settings-row__control {
+  flex-shrink: 0;
+}
+
+.settings-row--switch {
+  cursor: pointer;
+}
+
+.settings-row--switch .settings-row__label {
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-row--switch input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.settings-dialog__body .settings-row__control select {
+  font: inherit;
+  font-size: 0.8125rem;
+  min-width: 5.5rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.settings-dialog__body select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toggle-group .btn.btn--icon.toggle {
+  border-color: var(--border);
+  color: var(--fg-muted);
+}
+
+.toggle-group .btn.btn--icon.toggle.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.toggle-group .btn.btn--icon.toggle:hover:not(.active) {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  border-color: var(--border);
 }
   </style>
   <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
@@ -955,28 +1105,27 @@ main.single-panel .resizer { display: none; }
         '<p class="hint" id="filename-display"></p>' +
         '<div class="controls">' +
           '<input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,text/markdown,text/plain" hidden />' +
-          '<button type="button" id="btn-open-file" class="btn">Open</button>' +
-          '<button type="button" id="btn-reopen-file" class="btn" disabled>Reopen</button>' +
-          '<button type="button" id="btn-save-file" class="btn">Save</button>' +
+          '<button type="button" id="btn-open-file" class="btn btn--icon" aria-label="Open file" title="Open file">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
+          '</button>' +
+          '<button type="button" id="btn-reopen-file" class="btn btn--icon" aria-label="Reopen file" title="Reopen file" disabled>' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>' +
+          '</button>' +
+          '<button type="button" id="btn-save-file" class="btn btn--icon" aria-label="Save file" title="Save file">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>' +
+          '</button>' +
           '<div class="toggle-group">' +
-            '<button type="button" id="btn-toggle-source" class="btn toggle active" aria-pressed="true">Source</button>' +
-            '<button type="button" id="btn-toggle-preview" class="btn toggle active" aria-pressed="true">Preview</button>' +
+            '<button type="button" id="btn-toggle-source" class="btn btn--icon toggle active" aria-pressed="true" aria-label="Show source panel" title="Source">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' +
+            '</button>' +
+            '<button type="button" id="btn-toggle-preview" class="btn btn--icon toggle active" aria-pressed="true" aria-label="Show preview panel" title="Preview">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>' +
+            '</button>' +
           '</div>' +
-          '<label>' +
-            '<input type="checkbox" id="fit-width" checked /> FitWidth' +
-          '</label>' +
-          '<label>' +
-            '<input type="checkbox" id="tab2spaces" checked /> Tab2Spaces' +
-            '<input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />' +
-          '</label>' +
-          '<label>' +
-            '<span>Format</span>' +
-            '<select id="uml-format" aria-label="PlantUML output format">' +
-              '<option value="svg" selected>SVG</option>' +
-              '<option value="png">PNG</option>' +
-            '</select>' +
-          '</label>' +
-          '<button type="button" id="btn-theme" class="btn" aria-label="Toggle dark mode" title="Toggle dark mode">&#9728;</button>' +
+          '<button type="button" id="btn-settings" class="btn btn--icon" aria-label="Open settings" title="Settings">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
+          '</button>' +
+          '<button type="button" id="btn-theme" class="btn btn--icon" aria-label="Toggle dark mode" title="Toggle dark mode">&#9728;</button>' +
         '</div>' +
       '</header>' +
       '<main>' +
@@ -992,7 +1141,48 @@ main.single-panel .resizer { display: none; }
             '<article id="preview"></article>' +
           '</div>' +
         '</section>' +
-      '</main>';
+      '</main>' +
+      '<dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-dialog-title">' +
+        '<div class="settings-dialog__aligner">' +
+        '<div class="settings-dialog__panel">' +
+          '<div class="settings-dialog__header">' +
+            '<h2 id="settings-dialog-title" class="settings-dialog__title">Settings</h2>' +
+            '<button type="button" id="btn-settings-close" class="btn btn--icon" aria-label="Close settings">&times;</button>' +
+          '</div>' +
+          '<div class="settings-dialog__body">' +
+            '<label class="settings-row settings-row--switch" for="fit-width">' +
+              '<span class="settings-row__label">Fit to Width</span>' +
+              '<input type="checkbox" id="fit-width" checked />' +
+            '</label>' +
+            '<label class="settings-row settings-row--switch" for="tab2spaces">' +
+              '<span class="settings-row__label">Convert Tabs to Spaces</span>' +
+              '<input type="checkbox" id="tab2spaces" checked />' +
+            '</label>' +
+            '<div class="settings-row" role="group" aria-labelledby="tab-size-label">' +
+              '<span id="tab-size-label" class="settings-row__label">Tab Size</span>' +
+              '<div class="settings-row__control">' +
+                '<select id="tab-spaces-num" aria-labelledby="tab-size-label" aria-label="Tab size">' +
+                  '<option value="2">2</option>' +
+                  '<option value="3">3</option>' +
+                  '<option value="4" selected>4</option>' +
+                  '<option value="6">6</option>' +
+                  '<option value="8">8</option>' +
+                '</select>' +
+              '</div>' +
+            '</div>' +
+            '<div class="settings-row" role="group" aria-labelledby="image-format-label">' +
+              '<span id="image-format-label" class="settings-row__label">Image Format</span>' +
+              '<div class="settings-row__control">' +
+                '<select id="uml-format" aria-labelledby="image-format-label" aria-label="Diagram image format">' +
+                  '<option value="svg" selected>SVG</option>' +
+                  '<option value="png">PNG</option>' +
+                '</select>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '</div>' +
+      '</dialog>';
 
     const source = document.getElementById("source");
     const preview = document.getElementById("preview");
@@ -1013,6 +1203,24 @@ main.single-panel .resizer { display: none; }
     const resizer = document.getElementById("resizer");
     const main = document.querySelector("main");
     const btnTheme = document.getElementById("btn-theme");
+    const settingsDialog = document.getElementById("settings-dialog");
+    const settingsAligner = settingsDialog.querySelector(".settings-dialog__aligner");
+    const settingsPanel = settingsDialog.querySelector(".settings-dialog__panel");
+    const btnSettings = document.getElementById("btn-settings");
+    const btnSettingsClose = document.getElementById("btn-settings-close");
+
+    btnSettings.addEventListener("click", function() {
+      settingsDialog.showModal();
+    });
+    btnSettingsClose.addEventListener("click", function() {
+      settingsDialog.close();
+    });
+    settingsAligner.addEventListener("click", function() {
+      settingsDialog.close();
+    });
+    settingsPanel.addEventListener("click", function(e) {
+      e.stopPropagation();
+    });
 
     // ── Theme toggle ──
     function applyTheme(dark) {
@@ -1058,13 +1266,19 @@ main.single-panel .resizer { display: none; }
       preview.classList.toggle("fit-width", fitWidthCheckbox.checked);
     });
 
+    function syncTabSizeControl() {
+      tabSpacesNum.disabled = !tab2spacesCheckbox.checked;
+    }
+    tab2spacesCheckbox.addEventListener("change", syncTabSizeControl);
+    syncTabSizeControl();
+
     source.addEventListener("keydown", function(e) {
       if (e.key === "Tab") {
         e.preventDefault();
         var start = source.selectionStart;
         var end = source.selectionEnd;
         var insert = tab2spacesCheckbox.checked
-          ? " ".repeat(parseInt(tabSpacesNum.value) || 4)
+          ? " ".repeat(parseInt(tabSpacesNum.value, 10) || 4)
           : "\t";
 
         if (start === end) {
@@ -1079,7 +1293,7 @@ main.single-panel .resizer { display: none; }
           if (e.shiftKey) {
             var lines = selected.split("\n");
             var pattern = tab2spacesCheckbox.checked
-              ? new RegExp("^ {1," + (parseInt(tabSpacesNum.value) || 4) + "}")
+              ? new RegExp("^ {1," + (parseInt(tabSpacesNum.value, 10) || 4) + "}")
               : /^\t/;
             var dedented = lines.map(function(line) { return line.replace(pattern, ""); });
             var newSelected = dedented.join("\n");

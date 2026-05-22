@@ -1,10 +1,21 @@
 import DOMPurify from "dompurify";
 import { marked, type Tokens } from "marked";
-import mermaid from "mermaid";
 import * as plantumlEncoderPkg from "plantuml-encoder";
 import "./style.css";
 
-mermaid.initialize({ startOnLoad: false });
+type MermaidAPI = typeof import("mermaid").default;
+
+/** Lazy-load Mermaid (~hundreds of KB); keeps the main chunk small when docs have no diagrams. */
+let mermaidLoadPromise: Promise<MermaidAPI> | null = null;
+
+function ensureMermaid(): Promise<MermaidAPI> {
+  mermaidLoadPromise ??= import("mermaid").then((mod) => {
+    const api = mod.default;
+    api.initialize({ startOnLoad: false });
+    return api;
+  });
+  return mermaidLoadPromise;
+}
 
 /** CJS interop varies by bundler; resolve `encode` from named export or `default.encode`. */
 function resolvePlantumlEncode(): (diagram: string) => string {
@@ -573,26 +584,28 @@ function mount(): void {
       <p class="hint" id="filename-display"></p>
       <div class="controls">
         <input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,text/markdown,text/plain" hidden />
-        <button type="button" id="btn-open-file" class="btn">Open</button>
-        <button type="button" id="btn-reopen-file" class="btn" disabled>Reopen</button>
-        <button type="button" id="btn-save-file" class="btn">Save</button>
+        <button type="button" id="btn-open-file" class="btn btn--icon" aria-label="Open file" title="Open file">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button type="button" id="btn-reopen-file" class="btn btn--icon" aria-label="Reopen file" title="Reopen file" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
+        </button>
+        <button type="button" id="btn-save-file" class="btn btn--icon" aria-label="Save file" title="Save file">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        </button>
         <div class="toggle-group">
-          <button type="button" id="btn-toggle-source" class="btn toggle active" aria-pressed="true">Source</button>
-          <button type="button" id="btn-toggle-preview" class="btn toggle active" aria-pressed="true">Preview</button>
+          <button type="button" id="btn-toggle-source" class="btn btn--icon toggle active" aria-pressed="true" aria-label="Show source panel" title="Source">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+          </button>
+          <button type="button" id="btn-toggle-preview" class="btn btn--icon toggle active" aria-pressed="true" aria-label="Show preview panel" title="Preview">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
         </div>
-        <label>
-          <input type="checkbox" id="fit-width" checked /> FitWidth
-        </label>
-        <label>
-          <input type="checkbox" id="tab2spaces" checked /> Tab2Spaces<input type="number" id="tab-spaces-num" value="2" min="1" max="16" aria-label="Tab width" />
-        </label>
-        <label>
-          <span>Format</span>
-          <select id="uml-format" aria-label="PlantUML output format">
-            <option value="svg" selected>SVG</option>
-            <option value="png">PNG</option>
-          </select>
-        </label>        <button type="button" id="btn-theme" class="btn" aria-label="Toggle dark mode" title="Toggle dark mode">☀</button>      </div>
+        <button type="button" id="btn-settings" class="btn btn--icon" aria-label="Open settings" title="Settings">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button type="button" id="btn-theme" class="btn btn--icon" aria-label="Toggle dark mode" title="Toggle dark mode">☀</button>
+      </div>
     </header>
     <main>
       <section class="panel" id="panel-source">
@@ -608,6 +621,47 @@ function mount(): void {
         </div>
       </section>
     </main>
+    <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-dialog-title">
+      <div class="settings-dialog__aligner">
+        <div class="settings-dialog__panel">
+        <div class="settings-dialog__header">
+          <h2 id="settings-dialog-title" class="settings-dialog__title">Settings</h2>
+          <button type="button" id="btn-settings-close" class="btn btn--icon" aria-label="Close settings">\u00D7</button>
+        </div>
+        <div class="settings-dialog__body">
+          <label class="settings-row settings-row--switch" for="fit-width">
+            <span class="settings-row__label">Fit to Width</span>
+            <input type="checkbox" id="fit-width" checked />
+          </label>
+          <label class="settings-row settings-row--switch" for="tab2spaces">
+            <span class="settings-row__label">Convert Tabs to Spaces</span>
+            <input type="checkbox" id="tab2spaces" checked />
+          </label>
+          <div class="settings-row" role="group" aria-labelledby="tab-size-label">
+            <span id="tab-size-label" class="settings-row__label">Tab Size</span>
+            <div class="settings-row__control">
+              <select id="tab-spaces-num" aria-labelledby="tab-size-label" aria-label="Tab size">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4" selected>4</option>
+                <option value="6">6</option>
+                <option value="8">8</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-row" role="group" aria-labelledby="image-format-label">
+            <span id="image-format-label" class="settings-row__label">Image Format</span>
+            <div class="settings-row__control">
+              <select id="uml-format" aria-labelledby="image-format-label" aria-label="Diagram image format">
+                <option value="svg" selected>SVG</option>
+                <option value="png">PNG</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </dialog>
   `;
 
   const source = document.querySelector<HTMLTextAreaElement>("#source")!;
@@ -623,12 +677,30 @@ function mount(): void {
   const usageWatermark = document.querySelector<HTMLElement>("#usage-watermark")!;
   const fitWidthCheckbox = document.querySelector<HTMLInputElement>("#fit-width")!;
   const tab2spacesCheckbox = document.querySelector<HTMLInputElement>("#tab2spaces")!;
-  const tabSpacesNum = document.querySelector<HTMLInputElement>("#tab-spaces-num")!;
+  const tabSpacesNum = document.querySelector<HTMLSelectElement>("#tab-spaces-num")!;
   const panelSource = document.querySelector<HTMLElement>("#panel-source")!;
   const panelPreview = document.querySelector<HTMLElement>("#panel-preview")!;
   const resizer = document.querySelector<HTMLElement>("#resizer")!;
   const main = document.querySelector<HTMLElement>("main")!;
   const btnTheme = document.querySelector<HTMLButtonElement>("#btn-theme")!;
+  const settingsDialog = document.querySelector<HTMLDialogElement>("#settings-dialog")!;
+  const settingsAligner = settingsDialog.querySelector<HTMLElement>(".settings-dialog__aligner")!;
+  const settingsPanel = settingsDialog.querySelector<HTMLElement>(".settings-dialog__panel")!;
+  const btnSettings = document.querySelector<HTMLButtonElement>("#btn-settings")!;
+  const btnSettingsClose = document.querySelector<HTMLButtonElement>("#btn-settings-close")!;
+
+  btnSettings.addEventListener("click", () => {
+    settingsDialog.showModal();
+  });
+  btnSettingsClose.addEventListener("click", () => {
+    settingsDialog.close();
+  });
+  settingsAligner.addEventListener("click", () => {
+    settingsDialog.close();
+  });
+  settingsPanel.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
 
   // ── Theme toggle ────────────────────────────────────────
   function applyTheme(dark: boolean): void {
@@ -677,13 +749,19 @@ function mount(): void {
     preview.classList.toggle("fit-width", fitWidthCheckbox.checked);
   });
 
+  function syncTabSizeControl(): void {
+    tabSpacesNum.disabled = !tab2spacesCheckbox.checked;
+  }
+  tab2spacesCheckbox.addEventListener("change", syncTabSizeControl);
+  syncTabSizeControl();
+
   source.addEventListener("keydown", (e) => {
     if (e.key === "Tab") {
       e.preventDefault();
       const start = source.selectionStart;
       const end = source.selectionEnd;
       const insert = tab2spacesCheckbox.checked
-        ? " ".repeat(parseInt(tabSpacesNum.value) || 2)
+        ? " ".repeat(parseInt(tabSpacesNum.value, 10) || 4)
         : "\t";
 
       if (start === end) {
@@ -697,7 +775,7 @@ function mount(): void {
 
         if (e.shiftKey) {
           const pattern = tab2spacesCheckbox.checked
-            ? new RegExp("^ {1," + (parseInt(tabSpacesNum.value) || 2) + "}")
+            ? new RegExp("^ {1," + (parseInt(tabSpacesNum.value, 10) || 4) + "}")
             : /^\t/;
           const dedented = selected.split("\n").map((line) => line.replace(pattern, ""));
           const newSelected = dedented.join("\n");
@@ -824,6 +902,7 @@ function mount(): void {
 
     // Render Mermaid diagrams via mermaid.render() → SVG string approach (reliable across themes)
     if (mermaidQueue.length > 0) {
+      const mermaid = await ensureMermaid();
       mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
       const seq = ++mermaidRenderSeq;
       for (let i = 0; i < mermaidQueue.length; i++) {

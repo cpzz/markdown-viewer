@@ -47,8 +47,9 @@ npm run preview
 ```
 
 Requirements:
-- Node.js 18+
+- **Node.js 20+** (LTS is fine). **Node.js 22+** is optional but recommended: it avoids an `npm warn EBADENGINE` message from a transitive dependency (`chevrotain@12`, pulled in by Mermaid 11’s parser stack). The warning does not block install or builds on Node 20.
 - Internet connection
+
 
 ## Usage
 
@@ -208,4 +209,4 @@ markdown-plantuml-viewer/
 
 ## License
 
-MIT
+**Apache License 2.0**
