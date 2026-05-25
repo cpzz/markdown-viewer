@@ -382,6 +382,8 @@ main.single-panel .resizer { display: none; }
 .plantuml-block img { max-width: none; }
 .plantuml-block figcaption { margin-top: 0.5rem; font-size: 0.6875rem; color: var(--fg-muted); }
 .plantuml-block a { color: var(--accent-link); }
+.plantuml-block:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plantuml-block:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .plantuml-error { color: #ff3b30; font-size: 0.875rem; }
 
 /* Mermaid */
@@ -1521,6 +1523,18 @@ main.single-panel .resizer { display: none; }
       return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
     }
 
+    function activatePlantumlBlocks() {
+      preview.querySelectorAll(".plantuml-block").forEach(function(block) {
+        block.tabIndex = 0;
+        block.addEventListener("keydown", function(e) {
+          if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            e.preventDefault();
+            block.scrollLeft += e.key === "ArrowRight" ? 200 : -200;
+          }
+        });
+      });
+    }
+
     function render() {
       // Reset heading counter for duplicate ID handling
       headingCount = {};
@@ -1546,6 +1560,7 @@ main.single-panel .resizer { display: none; }
             sanitizeOptsPlant
           );
         }
+        activatePlantumlBlocks();
         return;
       }
 
@@ -1630,6 +1645,8 @@ main.single-panel .resizer { display: none; }
           });
         });
       });
+
+      activatePlantumlBlocks();
     }
 
     var timer;

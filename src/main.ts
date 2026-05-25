@@ -999,6 +999,19 @@ function mount(): void {
     return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
   }
 
+  /** Make each plantuml-block focusable and scrollable via arrow keys. */
+  function activatePlantumlBlocks(): void {
+    preview.querySelectorAll<HTMLElement>(".plantuml-block").forEach((block) => {
+      block.tabIndex = 0;
+      block.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          block.scrollLeft += e.key === "ArrowRight" ? 200 : -200;
+        }
+      });
+    });
+  }
+
   async function render(): Promise<void> {
     headingCount = {};
     mermaidQueue = [];
@@ -1018,6 +1031,7 @@ function mount(): void {
           sanitizeOpts,
         );
       }
+      activatePlantumlBlocks();
       return;
     }
 
@@ -1105,6 +1119,8 @@ function mount(): void {
         });
       });
     });
+
+    activatePlantumlBlocks();
   }
 
   let t: ReturnType<typeof setTimeout> | undefined;
