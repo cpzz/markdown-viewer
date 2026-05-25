@@ -111,6 +111,14 @@ function isMarkdownDocumentPath(pathOrName: string): boolean {
   return Boolean(ext) && MARKDOWN_DOCUMENT_EXTENSIONS.has(ext);
 }
 
+/** Whole-file PlantUML source (not parsed as Markdown). */
+const PLANTUML_DOCUMENT_EXTENSIONS = new Set(["puml", "plantuml"]);
+
+function isPlantUmlDocumentPath(pathOrName: string): boolean {
+  const ext = pathFileExtension(pathOrName);
+  return Boolean(ext) && PLANTUML_DOCUMENT_EXTENSIONS.has(ext);
+}
+
 const MDV_TRANSFER_DB = "mdv-fs-transfer";
 const MDV_TRANSFER_STORE = "pending";
 
@@ -706,7 +714,7 @@ function mount(): void {
       <h1>Markdown Viewer</h1>
       <p class="hint" id="filename-display"></p>
       <div class="controls">
-        <input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,text/markdown,text/plain" hidden />
+        <input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,text/markdown,text/plain" hidden />
         <button type="button" id="btn-open-file" class="btn btn--icon" aria-label="Open file" title="Open file">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         </button>
@@ -739,7 +747,7 @@ function mount(): void {
       <section class="panel" id="panel-preview">
         <label for="preview-wrap">Preview</label>
         <div id="preview-wrap" tabindex="-1">
-          <div id="usage-watermark">Drag a .md file or a project folder onto the page, or use Open file</div>
+          <div id="usage-watermark">Drag a .md or .puml file or a project folder onto the page, or use Open file</div>
           <article id="preview"></article>
         </div>
       </section>
@@ -994,6 +1002,24 @@ function mount(): void {
   async function render(): Promise<void> {
     headingCount = {};
     mermaidQueue = [];
+
+    if (isPlantUmlDocumentPath(currentFileName)) {
+      const sanitizeOpts = {
+        ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
+        ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
+      };
+      try {
+        const fig = renderPlantUmlBlock(source.value, plantumlOutputFormat);
+        preview.innerHTML = DOMPurify.sanitize(`<article class="preview-plantuml-file">${fig}</article>`, sanitizeOpts);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        preview.innerHTML = DOMPurify.sanitize(
+          `<article class="preview-plantuml-file"><p class="plantuml-error">PlantUML encode error: ${escapeHtml(msg)}</p></article>`,
+          sanitizeOpts,
+        );
+      }
+      return;
+    }
 
     if (!isMarkdownDocumentPath(currentFileName)) {
       const lang = prismLangForSourcePreview(currentFileName, source.value);
@@ -1328,6 +1354,10 @@ function mount(): void {
             {
               description: "Markdown files",
               accept: { "text/markdown": [".md", ".markdown", ".mdown", ".mkd"] },
+            },
+            {
+              description: "PlantUML diagrams",
+              accept: { "text/plain": [".puml", ".plantuml"] },
             },
           ],
           multiple: false,

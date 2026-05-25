@@ -699,6 +699,7 @@ main.single-panel .resizer { display: none; }
   }
 
   var MARKDOWN_DOC_EXT = { md: 1, mdx: 1, markdown: 1, mdown: 1, mkd: 1, qmd: 1, rmd: 1, mdc: 1 };
+  var PLANTUML_DOC_EXT = { puml: 1, plantuml: 1 };
 
   function pathBasename(p) {
     var i1 = p.lastIndexOf("/");
@@ -716,6 +717,11 @@ main.single-panel .resizer { display: none; }
     var dot = base.lastIndexOf(".");
     if (dot <= 0 || dot >= base.length - 1) return "";
     return base.slice(dot + 1).toLowerCase();
+  }
+
+  function isPlantUmlDocumentPath(pathOrName) {
+    var ext = pathFileExtension(pathOrName);
+    return !!ext && PLANTUML_DOC_EXT.hasOwnProperty(ext);
   }
 
   function isMarkdownDocumentPath(pathOrName) {
@@ -1239,7 +1245,7 @@ main.single-panel .resizer { display: none; }
         '<h1>Markdown Viewer</h1>' +
         '<p class="hint" id="filename-display"></p>' +
         '<div class="controls">' +
-          '<input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,text/markdown,text/plain" hidden />' +
+          '<input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,text/markdown,text/plain" hidden />' +
           '<button type="button" id="btn-open-file" class="btn btn--icon" aria-label="Open file" title="Open file">' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
           '</button>' +
@@ -1272,7 +1278,7 @@ main.single-panel .resizer { display: none; }
         '<section class="panel" id="panel-preview">' +
           '<label for="preview-wrap">Preview</label>' +
           '<div id="preview-wrap" tabindex="-1">' +
-            '<div id="usage-watermark">Drag a .md file or a project folder onto the page, or use Open file</div>' +
+            '<div id="usage-watermark">Drag a .md or .puml file or a project folder onto the page, or use Open file</div>' +
             '<article id="preview"></article>' +
           '</div>' +
         '</section>' +
@@ -1519,6 +1525,29 @@ main.single-panel .resizer { display: none; }
       // Reset heading counter for duplicate ID handling
       headingCount = {};
       mermaidQueue = [];
+
+      if (isPlantUmlDocumentPath(currentFileName)) {
+        var sanitizeOptsPlant = {
+          ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
+          ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"]
+        };
+        try {
+          var figPlant = renderPlantUmlBlock(source.value, plantumlOutputFormat);
+          preview.innerHTML = DOMPurify.sanitize(
+            '<article class="preview-plantuml-file">' + figPlant + "</article>",
+            sanitizeOptsPlant
+          );
+        } catch (ePlant) {
+          var msgPlant = ePlant && ePlant.message ? ePlant.message : String(ePlant);
+          preview.innerHTML = DOMPurify.sanitize(
+            '<article class="preview-plantuml-file"><p class="plantuml-error">PlantUML encode error: ' +
+              escapeHtml(msgPlant) +
+              "</p></article>",
+            sanitizeOptsPlant
+          );
+        }
+        return;
+      }
 
       if (!isMarkdownDocumentPath(currentFileName)) {
         var lang = prismLangForSourcePreview(currentFileName, source.value);
@@ -1851,10 +1880,16 @@ main.single-panel .resizer { display: none; }
       if (window.showOpenFilePicker) {
         try {
           var options = {
-            types: [{
-              description: "Markdown files",
-              accept: { "text/markdown": [".md", ".markdown", ".mdown", ".mkd"] }
-            }],
+            types: [
+              {
+                description: "Markdown files",
+                accept: { "text/markdown": [".md", ".markdown", ".mdown", ".mkd"] }
+              },
+              {
+                description: "PlantUML diagrams",
+                accept: { "text/plain": [".puml", ".plantuml"] }
+              }
+            ],
             multiple: false
           };
           if (fileHandle) {
