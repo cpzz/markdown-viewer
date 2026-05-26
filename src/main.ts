@@ -409,6 +409,116 @@ function slugify(text: string): string {
 
 let headingCount: Record<string, number> = {};
 
+/** C-style line scan: line comments, strings, and block-comment depth (slash-star … star-slash). */
+function updateBlockCommentDepthForLine(line: string, depth: number): number {
+  let d = depth;
+  let i = 0;
+  let inString: '"' | "'" | "`" | null = null;
+  let escape = false;
+
+  while (i < line.length) {
+    const c = line[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        i++;
+        continue;
+      }
+      if (c === "\\") {
+        escape = true;
+        i++;
+        continue;
+      }
+      if (c === inString) {
+        inString = null;
+      }
+      i++;
+      continue;
+    }
+
+    if (c === "/" && line[i + 1] === "/") {
+      break;
+    }
+    if (c === "/" && line[i + 1] === "*") {
+      d++;
+      i += 2;
+      continue;
+    }
+    if (c === "*" && line[i + 1] === "/") {
+      d = Math.max(0, d - 1);
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      inString = c;
+      i++;
+      continue;
+    }
+    i++;
+  }
+  return d;
+}
+
+/** First line from startLineIdx that is a closing fence (trim equals fence) and not inside a C-style block comment. */
+function findClosingFenceLineIndexInLines(lines: string[], startLineIdx: number, fenceLen: number): number {
+  const fence = "`".repeat(fenceLen);
+  let blockCommentDepth = 0;
+  for (let li = startLineIdx; li < lines.length; li++) {
+    const line = lines[li];
+    if (blockCommentDepth === 0 && line.trim() === fence) {
+      return li;
+    }
+    blockCommentDepth = updateBlockCommentDepthForLine(line, blockCommentDepth);
+  }
+  return -1;
+}
+
+function findClosingFenceCharIndex(text: string, contentStartChar: number, fenceLen: number): number {
+  const t = text.replace(/\r\n/g, "\n");
+  const lines = t.split("\n");
+  let off = 0;
+  let startLine = 0;
+  while (startLine < lines.length - 1) {
+    const lineLen = lines[startLine].length;
+    const rowEnd = off + lineLen;
+    if (contentStartChar <= rowEnd) break;
+    off = rowEnd + 1;
+    startLine++;
+  }
+  const closeLine = findClosingFenceLineIndexInLines(lines, startLine, fenceLen);
+  if (closeLine === -1) return -1;
+  off = 0;
+  for (let i = 0; i < closeLine; i++) {
+    off += lines[i].length + 1;
+  }
+  return off;
+}
+
+/**
+ * If the fenced body contains a line that is only backticks of length >= opening fence length
+ * (e.g. ``` inside ``` … ```), lengthen the fence so CommonMark/marked does not end the block early.
+ */
+function rewrapFenceForNestedBacktickLines(block: string): string {
+  const lines = block.split("\n");
+  if (lines.length < 2) return block;
+  const openMatch = lines[0].match(/^(`{3,})([^`]*)$/);
+  if (!openMatch) return block;
+  const f = openMatch[1].length;
+  const info = openMatch[2];
+  let maxBt = 0;
+  for (let li = 1; li < lines.length - 1; li++) {
+    const t = lines[li].trim();
+    const m = t.match(/^(`+)$/);
+    if (m) {
+      maxBt = Math.max(maxBt, m[1].length);
+    }
+  }
+  if (maxBt < f) return block;
+  const nf = maxBt + 1;
+  const fence = "`".repeat(nf);
+  return [fence + info, ...lines.slice(1, -1), fence].join("\n");
+}
+
 /**
  * MyST (Markedly Structured Text) preprocessor
  * Converts MyST directives to HTML before Markdown parsing:
@@ -440,17 +550,7 @@ function preprocessMyST(markdown: string): string {
   }
 
   function findClosingFence(text: string, startIndex: number, backtickCount: number): number {
-    const fence = "`".repeat(backtickCount);
-    let idx = startIndex;
-    while (idx < text.length) {
-      const lineEnd = text.indexOf("\n", idx);
-      const line = lineEnd === -1 ? text.slice(idx) : text.slice(idx, lineEnd);
-      if (line.trim() === fence) {
-        return idx;
-      }
-      idx = lineEnd === -1 ? text.length : lineEnd + 1;
-    }
-    return -1;
+    return findClosingFenceCharIndex(text.replace(/\r\n/g, "\n"), startIndex, backtickCount);
   }
 
   function processGridItems(content: string, backtickCount: number): string {
@@ -605,21 +705,42 @@ function preprocessMyST(markdown: string): string {
   }
 
   function wrapBarePlantUml(text: string): string {
+    const normalized = text.replace(/\r\n/g, "\n");
+    const lines = normalized.split("\n");
     const fenced: string[] = [];
-    const placeholder = text.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1\s*$/gm, (m) => {
-      fenced.push(m);
-      return "\x00FENCED" + (fenced.length - 1) + "\x00";
-    });
+    const out: string[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      const open = lines[i].match(/^(`{3,})([^`]*)$/);
+      if (!open) {
+        out.push(lines[i]);
+        i++;
+        continue;
+      }
+      const fenceLen = open[1].length;
+      const closeLine = findClosingFenceLineIndexInLines(lines, i + 1, fenceLen);
+      if (closeLine === -1) {
+        out.push(lines[i]);
+        i++;
+        continue;
+      }
+      let blockText = lines.slice(i, closeLine + 1).join("\n");
+      blockText = rewrapFenceForNestedBacktickLines(blockText);
+      fenced.push(blockText);
+      out.push("\x00FENCED" + (fenced.length - 1) + "\x00");
+      i = closeLine + 1;
+    }
+    const placeholder = out.join("\n");
     const wrapped = placeholder.replace(
       /^([ \t]*)@start(uml|ditaa|mindmap|wbs|gantt|salt|json|yaml|ebnf|regex|chronology|board)\b[^\n]*\n[\s\S]*?@end\2\b/gm,
       (match, indent: string) => {
         return indent + "```plantuml\n" + match.trim() + "\n" + indent + "```";
-      }
+      },
     );
-    return wrapped.replace(/\x00FENCED(\d+)\x00/g, (_, i) => fenced[i]);
+    return wrapped.replace(/\x00FENCED(\d+)\x00/g, (_, j) => fenced[Number(j)] ?? "");
   }
 
-  let result = markdown;
+  let result = markdown.replace(/\r\n/g, "\n");
   result = wrapBarePlantUml(result);
   result = processTabSets(result);
   result = processNestedGrids(result);
