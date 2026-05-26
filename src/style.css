@@ -351,6 +351,39 @@ main.single-panel .resizer { display: none; }
 }
 
 /* Code */
+.code-block-wrap {
+  position: relative;
+  margin: 1em 0;
+}
+
+#preview .code-block-wrap pre {
+  margin: 0;
+}
+
+.code-block-wrap .code-block__copy.btn--icon {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.code-block__copy .code-block__copy-done {
+  display: none;
+}
+
+.code-block__copy[data-copied] .code-block__copy-icon {
+  display: none;
+}
+
+.code-block__copy[data-copied] .code-block__copy-done {
+  display: block;
+}
+
+.code-block__copy[data-copied] {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+
 #preview pre {
   overflow: auto;
   padding: 0.75rem 1rem;
@@ -392,6 +425,7 @@ main.single-panel .resizer { display: none; }
 #preview.fit-width img { max-width: 100%; }
 #preview.fit-width table { max-width: 100%; }
 #preview.fit-width pre { max-width: 100%; }
+#preview.fit-width .code-block-wrap { max-width: 100%; }
 #preview.fit-width .plantuml-block img { max-width: 100%; }
 
 /* Lists */

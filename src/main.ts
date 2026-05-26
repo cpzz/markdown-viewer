@@ -76,6 +76,14 @@ function escapeHtml(s: string): string {
     .replaceAll('"', "&quot;");
 }
 
+/** Fenced code (non-diagram): icon copy of rendered / highlighted text (`textContent`). */
+const CODE_BLOCK_CLIPBOARD_ICON = `<span class="code-block__copy-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>`;
+const CODE_BLOCK_CHECK_ICON = `<span class="code-block__copy-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`;
+
+function codeBlockWithCopyButton(langClass: string, escapedBody: string): string {
+  return `<div class="code-block-wrap"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">${CODE_BLOCK_CLIPBOARD_ICON}${CODE_BLOCK_CHECK_ICON}</button><pre><code${langClass}>${escapedBody}</code></pre></div>`;
+}
+
 /** File path / name → basename (handles `/` and `\\`). */
 function pathBasename(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
@@ -652,7 +660,7 @@ marked.use({
       }
       const langClass = lang ? ` class="language-${lang}"` : "";
       const escaped = escapeHtml(token.text);
-      return `<pre><code${langClass}>${escaped}</code></pre>`;
+      return codeBlockWithCopyButton(langClass, escaped);
     },
   },
 });
@@ -1040,10 +1048,38 @@ function mount(): void {
       const escaped = escapeHtml(source.value);
       const langClass = lang ? ` class="language-${lang}"` : "";
       preview.innerHTML = DOMPurify.sanitize(
-        `<article class="preview-non-markdown"><pre><code${langClass}>${escaped}</code></pre></article>`,
+        `<article class="preview-non-markdown">${codeBlockWithCopyButton(langClass, escaped)}</article>`,
         {
-          ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
-          ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
+          ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span"],
+          ADD_ATTR: [
+            "loading",
+            "target",
+            "rel",
+            "id",
+            "role",
+            "aria-selected",
+            "data-tab",
+            "data-tabset",
+            "class",
+            "title",
+            "type",
+            "viewBox",
+            "xmlns",
+            "fill",
+            "stroke",
+            "stroke-width",
+            "stroke-linecap",
+            "stroke-linejoin",
+            "d",
+            "x",
+            "y",
+            "width",
+            "height",
+            "rx",
+            "ry",
+            "points",
+            "aria-hidden",
+          ],
         },
       );
       if (typeof Prism !== "undefined") {
@@ -1057,8 +1093,36 @@ function mount(): void {
     const preprocessed = preprocessMyST(source.value);
     const raw = await marked.parse(preprocessed);
     preview.innerHTML = DOMPurify.sanitize(raw, {
-      ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption"],
-      ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
+      ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "svg", "path", "rect", "polyline", "span"],
+      ADD_ATTR: [
+        "loading",
+        "target",
+        "rel",
+        "id",
+        "role",
+        "aria-selected",
+        "data-tab",
+        "data-tabset",
+        "class",
+        "title",
+        "type",
+        "viewBox",
+        "xmlns",
+        "fill",
+        "stroke",
+        "stroke-width",
+        "stroke-linecap",
+        "stroke-linejoin",
+        "d",
+        "x",
+        "y",
+        "width",
+        "height",
+        "rx",
+        "ry",
+        "points",
+        "aria-hidden",
+      ],
     });
 
     // Apply Prism syntax highlighting
@@ -1311,6 +1375,30 @@ function mount(): void {
   previewWrap.addEventListener(
     "click",
     (e) => {
+      const copyBtn = (e.target as HTMLElement | null)?.closest?.(".code-block__copy");
+      if (copyBtn && preview.contains(copyBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = copyBtn.closest(".code-block-wrap");
+        const codeEl = wrap?.querySelector("pre code");
+        if (!codeEl) return;
+        const text = codeEl.textContent ?? "";
+        void navigator.clipboard.writeText(text).then(
+          () => {
+            copyBtn.setAttribute("data-copied", "");
+            copyBtn.setAttribute("aria-label", "Copied");
+            window.setTimeout(() => {
+              copyBtn.removeAttribute("data-copied");
+              copyBtn.setAttribute("aria-label", "Copy code");
+            }, 2000);
+          },
+          () => {
+            alert("Could not copy to clipboard.");
+          },
+        );
+        return;
+      }
+
       const el = (e.target as HTMLElement | null)?.closest?.("a[href]");
       if (!el || !preview.contains(el)) return;
       const href = el.getAttribute("href");

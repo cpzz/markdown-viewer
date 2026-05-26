@@ -325,6 +325,32 @@ main.single-panel .resizer { display: none; }
 }
 
 /* Code */
+.code-block-wrap {
+  position: relative;
+  margin: 1em 0;
+}
+#preview .code-block-wrap pre {
+  margin: 0;
+}
+.code-block-wrap .code-block__copy.btn--icon {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.code-block__copy .code-block__copy-done {
+  display: none;
+}
+.code-block__copy[data-copied] .code-block__copy-icon {
+  display: none;
+}
+.code-block__copy[data-copied] .code-block__copy-done {
+  display: block;
+}
+.code-block__copy[data-copied] {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
 #preview pre {
   overflow: auto;
   padding: 0.75rem 1rem;
@@ -363,6 +389,7 @@ main.single-panel .resizer { display: none; }
 #preview.fit-width img { max-width: 100%; }
 #preview.fit-width table { max-width: 100%; }
 #preview.fit-width pre { max-width: 100%; }
+#preview.fit-width .code-block-wrap { max-width: 100%; }
 #preview.fit-width .plantuml-block img { max-width: 100%; }
 
 /* Lists */
@@ -698,6 +725,24 @@ main.single-panel .resizer { display: none; }
 
   function escapeHtml(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  var CODE_BLOCK_CLIPBOARD_ICON =
+    '<span class="code-block__copy-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>';
+  var CODE_BLOCK_CHECK_ICON =
+    '<span class="code-block__copy-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>';
+
+  function codeBlockWithCopyButton(langClass, escapedBody) {
+    return (
+      '<div class="code-block-wrap"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">' +
+      CODE_BLOCK_CLIPBOARD_ICON +
+      CODE_BLOCK_CHECK_ICON +
+      "</button><pre><code" +
+      langClass +
+      ">" +
+      escapedBody +
+      "</code></pre></div>"
+    );
   }
 
   var MARKDOWN_DOC_EXT = { md: 1, mdx: 1, markdown: 1, mdown: 1, mkd: 1, qmd: 1, rmd: 1, mdc: 1 };
@@ -1087,7 +1132,7 @@ main.single-panel .resizer { display: none; }
         }
         const langClass = lang ? ' class="language-' + lang + '"' : "";
         const escaped = escapeHtml(token.text);
-        return '<pre><code' + langClass + '>' + escaped + '</code></pre>';
+        return codeBlockWithCopyButton(langClass, escaped);
       }
     }
   });
@@ -1569,10 +1614,38 @@ main.single-panel .resizer { display: none; }
         var escaped = escapeHtml(source.value);
         var langClass = lang ? ' class="language-' + lang + '"' : "";
         preview.innerHTML = DOMPurify.sanitize(
-          '<article class="preview-non-markdown"><pre><code' + langClass + ">" + escaped + "</code></pre></article>",
+          '<article class="preview-non-markdown">' + codeBlockWithCopyButton(langClass, escaped) + "</article>",
           {
-            ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
-            ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"]
+            ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span"],
+            ADD_ATTR: [
+              "loading",
+              "target",
+              "rel",
+              "id",
+              "role",
+              "aria-selected",
+              "data-tab",
+              "data-tabset",
+              "class",
+              "title",
+              "type",
+              "viewBox",
+              "xmlns",
+              "fill",
+              "stroke",
+              "stroke-width",
+              "stroke-linecap",
+              "stroke-linejoin",
+              "d",
+              "x",
+              "y",
+              "width",
+              "height",
+              "rx",
+              "ry",
+              "points",
+              "aria-hidden"
+            ]
           }
         );
         if (typeof Prism !== "undefined") {
@@ -1586,8 +1659,36 @@ main.single-panel .resizer { display: none; }
       var preprocessed = preprocessMyST(source.value);
       const raw = marked.parse(preprocessed);
       preview.innerHTML = DOMPurify.sanitize(raw, {
-        ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption"],
-        ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"]
+        ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "svg", "path", "rect", "polyline", "span"],
+        ADD_ATTR: [
+          "loading",
+          "target",
+          "rel",
+          "id",
+          "role",
+          "aria-selected",
+          "data-tab",
+          "data-tabset",
+          "class",
+          "title",
+          "type",
+          "viewBox",
+          "xmlns",
+          "fill",
+          "stroke",
+          "stroke-width",
+          "stroke-linecap",
+          "stroke-linejoin",
+          "d",
+          "x",
+          "y",
+          "width",
+          "height",
+          "rx",
+          "ry",
+          "points",
+          "aria-hidden"
+        ]
       });
 
       // Apply Prism syntax highlighting
@@ -1843,6 +1944,29 @@ main.single-panel .resizer { display: none; }
       function(e) {
         var t = e.target;
         if (!t || !t.closest) return;
+        var copyBtn = t.closest(".code-block__copy");
+        if (copyBtn && preview.contains(copyBtn)) {
+          e.preventDefault();
+          e.stopPropagation();
+          var wrap = copyBtn.closest(".code-block-wrap");
+          var codeEl = wrap && wrap.querySelector("pre code");
+          if (!codeEl) return;
+          var text = codeEl.textContent || "";
+          navigator.clipboard.writeText(text).then(
+            function() {
+              copyBtn.setAttribute("data-copied", "");
+              copyBtn.setAttribute("aria-label", "Copied");
+              setTimeout(function() {
+                copyBtn.removeAttribute("data-copied");
+                copyBtn.setAttribute("aria-label", "Copy code");
+              }, 2000);
+            },
+            function() {
+              alert("Could not copy to clipboard.");
+            }
+          );
+          return;
+        }
         var el = t.closest("a[href]");
         if (!el || !preview.contains(el)) return;
         var href = el.getAttribute("href");
