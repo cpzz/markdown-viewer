@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import JSZip from "jszip";
 import { marked, type Tokens } from "marked";
 import * as plantumlEncoderPkg from "plantuml-encoder";
 import "./style.css";
@@ -125,6 +126,906 @@ const PLANTUML_DOCUMENT_EXTENSIONS = new Set(["puml", "plantuml"]);
 function isPlantUmlDocumentPath(pathOrName: string): boolean {
   const ext = pathFileExtension(pathOrName);
   return Boolean(ext) && PLANTUML_DOCUMENT_EXTENSIONS.has(ext);
+}
+
+/** XMind mind-map files (ZIP containing content.xml or content.json). */
+const XMIND_DOCUMENT_EXTENSIONS = new Set(["xmind"]);
+
+/** Pre-computed SVG/markdown for XMind render; set when a .xmind file is loaded. */
+let xmindRenderContent: string | null = null;
+
+/** Pretty-print XML by inserting newlines and indentation. */
+function prettyPrintXml(xml: string): string {
+  let indent = 0;
+  const TAB = "  ";
+  return xml
+    .replace(/></g, ">\n<")
+    .split("\n")
+    .map((line) => {
+      const t = line.trim();
+      if (!t) return "";
+      const isClose = /^<\//.test(t);
+      const isSelfClose = /\/>$/.test(t) || /^<\?/.test(t) || /^<!/.test(t);
+      const isBalanced = t.startsWith("<") && !isClose && !isSelfClose && t.includes("</");
+      const isOpen = t.startsWith("<") && !isClose && !isSelfClose && !isBalanced;
+      if (isClose) indent = Math.max(0, indent - 1);
+      const result = TAB.repeat(indent) + t;
+      if (isOpen) indent++;
+      return result;
+    })
+    .filter((l) => l !== "")
+    .join("\n");
+}
+
+function isXmindDocumentPath(pathOrName: string): boolean {
+  const ext = pathFileExtension(pathOrName);
+  return Boolean(ext) && XMIND_DOCUMENT_EXTENSIONS.has(ext);
+}
+
+/** Parse an XMind file (ArrayBuffer); returns pretty source for display.
+ *  Stores the rendered SVG/markdown in `xmindRenderContent` for the preview. */
+async function parseXmindToMarkdown(data: ArrayBuffer): Promise<string> {
+  const zip = await JSZip.loadAsync(data);
+
+  // Try new format (content.json) first, then old format (content.xml)
+  const jsonFile = zip.file("content.json");
+  if (jsonFile) {
+    const text = await jsonFile.async("string");
+    const sheets = JSON.parse(text) as XmindJsonSheet[];
+    xmindRenderContent = xmindSheetsToMermaid(sheets.map(sheetJsonToTree));
+    // Pretty-print JSON for source display
+    try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+  }
+
+  const xmlFile = zip.file("content.xml");
+  if (xmlFile) {
+    const text = await xmlFile.async("string");
+    xmindRenderContent = xmindXmlToMermaid(text);
+    return prettyPrintXml(text);
+  }
+
+  throw new Error("No content.xml or content.json found in .xmind file");
+}
+
+// ── Shared tree type ──
+
+interface XmindNode {
+  title: string;
+  children: XmindNode[];
+}
+
+type XmindLayout = "mindmap" | "flowchart-lr" | "flowchart-rl" | "flowchart-td" | "tree-down-right" | "tree-down-left" | "fishbone-right" | "fishbone-left" | "svg-table" | "markdown-table";
+
+interface XmindSheet {
+  title: string;
+  root: XmindNode | null;
+  layout: XmindLayout;
+}
+
+/** Map `structure-class` attribute to a rendering layout. */
+function structureClassToLayout(sc: string | null): XmindLayout {
+  if (!sc) return "mindmap";
+  if (sc.includes("logic.right")) return "flowchart-lr";
+  if (sc.includes("logic.left")) return "flowchart-rl";
+  if (sc.includes("tree.right")) return "tree-down-right";
+  if (sc.includes("tree.left")) return "tree-down-left";
+  if (sc.includes("fishbone.rightHeaded")) return "fishbone-right";
+  if (sc.includes("fishbone.leftHeaded")) return "fishbone-left";
+  if (sc.includes("org-chart")) return "flowchart-td";
+  if (sc.includes("timeline")) return "flowchart-lr";
+  if (sc.includes("matrix") || sc.includes("table")) return "svg-table";
+  // map.unbalanced, map.clockwise, map.anticlockwise, unknown
+  return "mindmap";
+}
+
+/** Build SVG/Markdown source from sheet trees, choosing diagram type per sheet. */
+function xmindSheetsToMermaid(sheets: XmindSheet[]): string {
+  const blocks: string[] = [];
+  for (const sheet of sheets) {
+    if (!sheet.root) continue;
+    if (sheet.layout === "markdown-table") {
+      blocks.push(renderMarkdownTable(sheet.root));
+    } else if (sheet.layout === "svg-table") {
+      blocks.push(renderSvgTable(sheet.root));
+    } else if (sheet.layout === "tree-down-right" || sheet.layout === "tree-down-left") {
+      blocks.push(renderTreeDownSvg(sheet.root, sheet.layout));
+    } else if (sheet.layout === "fishbone-right" || sheet.layout === "fishbone-left") {
+      blocks.push(renderFishboneSvg(sheet.root, sheet.layout));
+    } else if (sheet.layout === "mindmap") {
+      blocks.push(renderMindmapSvg(sheet.root));
+    } else {
+      blocks.push(renderBusTreeSvg(sheet.root, sheet.layout));
+    }
+  }
+  return blocks.join("\n\n");
+}
+
+// ── Markdown table renderer (matrix / table types) ──
+
+function renderMarkdownTable(root: XmindNode): string {
+  const lines: string[] = [`## ${root.title}`];
+  const rows = root.children;
+  if (rows.length === 0) return lines.join("\n");
+
+  // Determine max column count across all rows
+  let maxCols = 0;
+  for (const row of rows) {
+    if (row.children.length > maxCols) maxCols = row.children.length;
+  }
+
+  if (maxCols === 0) {
+    // No sub-children: render as a single-column table
+    lines.push("");
+    lines.push("| Item |");
+    lines.push("| --- |");
+    for (const row of rows) {
+      lines.push(`| ${mdTableEscape(row.title)} |`);
+    }
+    return lines.join("\n");
+  }
+
+  // First row's children titles become column headers
+  // Row titles become the first column
+  const headers = [""]; // first col = row label
+  for (let c = 0; c < maxCols; c++) {
+    headers.push(rows[0].children[c]?.title ?? `Col ${c + 1}`);
+  }
+  lines.push("");
+  lines.push("| " + headers.map(mdTableEscape).join(" | ") + " |");
+  lines.push("| " + headers.map(() => "---").join(" | ") + " |");
+
+  for (const row of rows) {
+    const cells = [row.title];
+    for (let c = 0; c < maxCols; c++) {
+      const child = row.children[c];
+      if (child) {
+        // If the cell has its own children, join them with commas
+        const sub = child.children.map((n) => n.title).filter(Boolean);
+        cells.push(sub.length > 0 ? `${child.title} (${sub.join(", ")})` : child.title);
+      } else {
+        cells.push("");
+      }
+    }
+    lines.push("| " + cells.map(mdTableEscape).join(" | ") + " |");
+  }
+  return lines.join("\n");
+}
+
+function mdTableEscape(s: string): string {
+  return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
+}
+
+// ── SVG Mindmap renderer (radial / map types) ──
+
+function renderMindmapSvg(root: XmindNode): string {
+  const FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40;
+  const V_GAP = 6, H_GAP = 20, BUS2C = 20, RX = 4;
+  const ROOT_RX = 16;
+
+  interface MNode {
+    title: string; children: MNode[];
+    w: number; h: number; subH: number;
+    x: number; y: number; depth: number;
+  }
+
+  function measure(node: XmindNode, depth: number = 1): MNode {
+    const h = depth === 1 ? FS + PAD_Y * 2 + 4 : FS + PAD_Y * 2;
+    const w = Math.max(MIN_W, estimateTextWidth(node.title, FS) + PAD_X * 2);
+    const children = node.children.map(c => measure(c, depth + 1));
+    let subH = h;
+    if (children.length > 0) {
+      let t = 0;
+      for (const c of children) t += c.subH;
+      t += V_GAP * (children.length - 1);
+      subH = Math.max(h, t);
+    }
+    return { title: node.title, children, w, h, subH, x: 0, y: 0, depth };
+  }
+
+  function layoutSide(nodes: MNode[], startX: number, centerY: number, goRight: boolean): void {
+    let totalH = 0;
+    for (const n of nodes) totalH += n.subH;
+    totalH += V_GAP * (nodes.length - 1);
+    let cur = centerY - totalH / 2;
+    for (const n of nodes) {
+      const cy = cur + n.subH / 2;
+      n.x = goRight ? startX : startX - n.w;
+      n.y = cy - n.h / 2;
+      if (n.children.length > 0) {
+        const childX = goRight ? n.x + n.w + H_GAP + BUS2C : n.x - H_GAP - BUS2C;
+        layoutSide(n.children, childX, cy, goRight);
+      }
+      cur += n.subH + V_GAP;
+    }
+  }
+
+  const svgLines: string[] = [];
+  const svgRects: string[] = [];
+  const svgTexts: string[] = [];
+
+  function drawNodeBox(n: MNode, ci: number): void {
+    const st = branchColor(ci);
+    const d = n.depth;
+    let fill = st.fill, fillAttr = "", strokeW = "1", fw = "normal";
+    if (d <= 1) { strokeW = "1.5"; fw = "bold"; }
+    else if (d === 2) { fillAttr = ' fill-opacity="0.4"'; }
+    else { fill = "none"; strokeW = "0.8"; }
+    svgRects.push(`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${RX}" ry="${RX}" fill="${fill}"${fillAttr} stroke="${st.stroke}" stroke-width="${strokeW}"/>`);
+    svgTexts.push(`<text x="${n.x + n.w / 2}" y="${n.y + n.h / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}" font-weight="${fw}" fill="currentColor">${escapeHtml(n.title)}</text>`);
+    for (const c of n.children) drawNodeBox(c, ci);
+  }
+
+  function drawBusConn(n: MNode, ci: number, goRight: boolean): void {
+    if (n.children.length === 0) return;
+    const lineColor = branchColor(ci).line;
+    const sw = n.depth <= 1 ? "1.5" : "1";
+    const exitX = goRight ? n.x + n.w : n.x;
+    const busX = goRight ? n.x + n.w + H_GAP : n.x - H_GAP;
+    const ny = n.y + n.h / 2;
+
+    if (n.children.length === 1) {
+      const c = n.children[0];
+      const entryX = goRight ? c.x : c.x + c.w;
+      svgLines.push(`<line x1="${exitX}" y1="${ny}" x2="${entryX}" y2="${c.y + c.h / 2}" stroke="${lineColor}" stroke-width="${sw}"/>`);
+    } else {
+      svgLines.push(`<line x1="${exitX}" y1="${ny}" x2="${busX}" y2="${ny}" stroke="${lineColor}" stroke-width="${sw}"/>`);
+      const fc = n.children[0], lc = n.children[n.children.length - 1];
+      svgLines.push(`<line x1="${busX}" y1="${fc.y + fc.h / 2}" x2="${busX}" y2="${lc.y + lc.h / 2}" stroke="${lineColor}" stroke-width="${sw}"/>`);
+      for (const c of n.children) {
+        const entryX = goRight ? c.x : c.x + c.w;
+        svgLines.push(`<line x1="${busX}" y1="${c.y + c.h / 2}" x2="${entryX}" y2="${c.y + c.h / 2}" stroke="${lineColor}" stroke-width="${sw}"/>`);
+      }
+    }
+    for (const c of n.children) drawBusConn(c, ci, goRight);
+  }
+
+  // Measure all children
+  const kids = root.children.map(c => measure(c));
+
+  // Split children: first half → right, second half → left
+  const half = Math.ceil(kids.length / 2);
+  const rightKids = kids.slice(0, half);
+  const leftKids = kids.slice(half);
+
+  // Measure root
+  const rootW = Math.max(MIN_W + 20, estimateTextWidth(root.title, FS + 2) + PAD_X * 3);
+  const rootH = FS + PAD_Y * 3;
+
+  // Compute total height for centering
+  let rTotalH = 0;
+  for (const n of rightKids) rTotalH += n.subH;
+  rTotalH += V_GAP * Math.max(0, rightKids.length - 1);
+  let lTotalH = 0;
+  for (const n of leftKids) lTotalH += n.subH;
+  lTotalH += V_GAP * Math.max(0, leftKids.length - 1);
+  const maxH = Math.max(rTotalH, lTotalH, rootH);
+  const centerY = maxH / 2;
+
+  // Root position: centered
+  const rootX = -rootW / 2;
+  const rootY = centerY - rootH / 2;
+
+  // Layout children on each side
+  const rightStartX = rootW / 2 + H_GAP + BUS2C;
+  const leftStartX = -rootW / 2 - H_GAP - BUS2C;
+  layoutSide(rightKids, rightStartX, centerY, true);
+  layoutSide(leftKids, leftStartX, centerY, false);
+
+  // Draw root → right children connections
+  if (rightKids.length > 0) {
+    const busX = rootW / 2 + H_GAP;
+    svgLines.push(`<line x1="${rootW / 2}" y1="${centerY}" x2="${busX}" y2="${centerY}" stroke="#888" stroke-width="1.5"/>`);
+    if (rightKids.length >= 2) {
+      svgLines.push(`<line x1="${busX}" y1="${rightKids[0].y + rightKids[0].h / 2}" x2="${busX}" y2="${rightKids[rightKids.length - 1].y + rightKids[rightKids.length - 1].h / 2}" stroke="#888" stroke-width="1.5"/>`);
+    }
+    for (let i = 0; i < rightKids.length; i++) {
+      const c = rightKids[i];
+      svgLines.push(`<line x1="${busX}" y1="${c.y + c.h / 2}" x2="${c.x}" y2="${c.y + c.h / 2}" stroke="${branchColor(i).line}" stroke-width="1.5"/>`);
+    }
+  }
+
+  // Draw root → left children connections
+  if (leftKids.length > 0) {
+    const busX = -rootW / 2 - H_GAP;
+    svgLines.push(`<line x1="${-rootW / 2}" y1="${centerY}" x2="${busX}" y2="${centerY}" stroke="#888" stroke-width="1.5"/>`);
+    if (leftKids.length >= 2) {
+      svgLines.push(`<line x1="${busX}" y1="${leftKids[0].y + leftKids[0].h / 2}" x2="${busX}" y2="${leftKids[leftKids.length - 1].y + leftKids[leftKids.length - 1].h / 2}" stroke="#888" stroke-width="1.5"/>`);
+    }
+    for (let i = 0; i < leftKids.length; i++) {
+      const c = leftKids[i];
+      svgLines.push(`<line x1="${busX}" y1="${c.y + c.h / 2}" x2="${c.x + c.w}" y2="${c.y + c.h / 2}" stroke="${branchColor(half + i).line}" stroke-width="1.5"/>`);
+    }
+  }
+
+  // Draw root node (rounded pill shape)
+  svgRects.push(`<rect x="${rootX}" y="${rootY}" width="${rootW}" height="${rootH}" rx="${ROOT_RX}" ry="${ROOT_RX}" fill="${ROOT_STYLE.fill}" stroke="${ROOT_STYLE.stroke}" stroke-width="1.5"/>`);
+  svgTexts.push(`<text x="${rootX + rootW / 2}" y="${rootY + rootH / 2 + (FS + 2) * 0.35}" text-anchor="middle" font-size="${FS + 2}" font-weight="bold" fill="currentColor">${escapeHtml(root.title)}</text>`);
+
+  // Draw branch subtrees
+  for (let i = 0; i < rightKids.length; i++) {
+    drawBusConn(rightKids[i], i, true);
+    drawNodeBox(rightKids[i], i);
+  }
+  for (let i = 0; i < leftKids.length; i++) {
+    drawBusConn(leftKids[i], half + i, false);
+    drawNodeBox(leftKids[i], half + i);
+  }
+
+  // Calculate bounds
+  let bx0 = rootX, by0 = rootY, bx1 = rootX + rootW, by1 = rootY + rootH;
+  function calcBounds(nodes: MNode[]): void {
+    for (const n of nodes) {
+      bx0 = Math.min(bx0, n.x); by0 = Math.min(by0, n.y);
+      bx1 = Math.max(bx1, n.x + n.w); by1 = Math.max(by1, n.y + n.h);
+      calcBounds(n.children);
+    }
+  }
+  calcBounds(rightKids);
+  calcBounds(leftKids);
+  // Account for bus lines extending beyond nodes
+  if (leftKids.length > 0) bx0 = Math.min(bx0, -rootW / 2 - H_GAP - BUS2C);
+
+  const pad = 12;
+  const w = bx1 - bx0 + pad * 2, h = by1 - by0 + pad * 2;
+  const tx = -bx0 + pad, ty = -by0 + pad;
+
+  return `<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<g transform="translate(${tx},${ty})">` +
+    svgLines.join("") + svgRects.join("") + svgTexts.join("") +
+    `</g></svg></div>`;
+}
+
+// ── SVG Bus-tree renderer (logic / tree / org-chart types) ──
+
+const BRANCH_COLORS = [
+  { stroke: "#4285f4", fill: "rgba(66,133,244,0.10)", line: "#4285f4" },   // blue
+  { stroke: "#ea4335", fill: "rgba(234,67,53,0.10)", line: "#ea4335" },    // red
+  { stroke: "#34a853", fill: "rgba(52,168,83,0.10)", line: "#34a853" },    // green
+  { stroke: "#fbbc05", fill: "rgba(251,188,5,0.15)", line: "#cc9900" },    // yellow
+  { stroke: "#8e24aa", fill: "rgba(142,36,170,0.10)", line: "#8e24aa" },   // purple
+  { stroke: "#e67c00", fill: "rgba(230,124,0,0.10)", line: "#e67c00" },    // orange
+  { stroke: "#00acc1", fill: "rgba(0,172,193,0.10)", line: "#00acc1" },    // cyan
+  { stroke: "#d81b60", fill: "rgba(216,27,96,0.10)", line: "#d81b60" },    // pink
+];
+const ROOT_STYLE = { stroke: "#555", fill: "rgba(80,80,80,0.12)" };
+
+function branchColor(idx: number) { return BRANCH_COLORS[idx % BRANCH_COLORS.length]; }
+
+function estimateTextWidth(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of text) {
+    w += ch.charCodeAt(0) > 0x2e7f ? fontSize : fontSize * 0.55;
+  }
+  return w;
+}
+
+function renderBusTreeSvg(root: XmindNode, layout: XmindLayout): string {
+  const FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40;
+  const V_GAP = 8, H_GAP = 20, BUS2C = 20, RX = 4;
+  type Dir = "LR" | "RL" | "TD";
+  const dir: Dir = layout === "flowchart-rl" ? "RL" : layout === "flowchart-td" ? "TD" : "LR";
+
+  interface LNode {
+    title: string; children: LNode[];
+    pE: number; sE: number; subS: number; pP: number; sC: number;
+  }
+
+  function build(node: XmindNode): LNode {
+    const nw = Math.max(MIN_W, estimateTextWidth(node.title, FS) + PAD_X * 2);
+    const nh = FS + PAD_Y * 2;
+    const children = node.children.map(build);
+    const pE = dir === "TD" ? nh : nw;
+    const sE = dir === "TD" ? nw : nh;
+    let subS = sE;
+    if (children.length > 0) {
+      let t = 0; for (const c of children) t += c.subS;
+      t += V_GAP * (children.length - 1);
+      subS = Math.max(sE, t);
+    }
+    return { title: node.title, children, pE, sE, subS, pP: 0, sC: 0 };
+  }
+
+  function pos(n: LNode, pP: number, sC: number): void {
+    n.pP = pP; n.sC = sC;
+    if (n.children.length === 0) return;
+    const childP = pP + n.pE + H_GAP + BUS2C;
+    let t = 0; for (const c of n.children) t += c.subS;
+    t += V_GAP * (n.children.length - 1);
+    let cur = sC - t / 2;
+    for (const c of n.children) { pos(c, childP, cur + c.subS / 2); cur += c.subS + V_GAP; }
+  }
+
+  function pt(p: number, s: number): [number, number] {
+    if (dir === "TD") return [s, p];
+    if (dir === "RL") return [-p, s];
+    return [p, s];
+  }
+
+  const lr = build(root);
+  pos(lr, 0, lr.subS / 2);
+
+  const svgLines: string[] = [];
+  const svgRects: string[] = [];
+  const svgTexts: string[] = [];
+
+  function drawNode(n: LNode, ci: number): void {
+    const [rx, ry] = dir === "TD" ? [n.sC - n.sE / 2, n.pP] : dir === "RL" ? [-(n.pP + n.pE), n.sC - n.sE / 2] : [n.pP, n.sC - n.sE / 2];
+    const [rw, rh] = dir === "TD" ? [n.sE, n.pE] : [n.pE, n.sE];
+    const st = ci < 0 ? ROOT_STYLE : branchColor(ci);
+    svgRects.push(`<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="${RX}" ry="${RX}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="1"/>`);
+    svgTexts.push(`<text x="${rx + rw / 2}" y="${ry + rh / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}" fill="currentColor">${escapeHtml(n.title)}</text>`);
+    for (const c of n.children) drawNode(c, ci);
+  }
+
+  function drawConn(n: LNode, ci: number): void {
+    if (n.children.length === 0) return;
+    const busP = n.pP + n.pE + H_GAP;
+    const lineColor = ci < 0 ? "#888" : branchColor(ci).line;
+    if (n.children.length === 1) {
+      const c = n.children[0];
+      const [x1, y1] = pt(n.pP + n.pE, n.sC);
+      const [x2, y2] = pt(c.pP, c.sC);
+      svgLines.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${lineColor}" stroke-width="1.5"/>`);
+    } else {
+      const [ax, ay] = pt(n.pP + n.pE, n.sC);
+      const [bx, by] = pt(busP, n.sC);
+      svgLines.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${lineColor}" stroke-width="1.5"/>`);
+      const fc = n.children[0], lc = n.children[n.children.length - 1];
+      const [tx, ty] = pt(busP, fc.sC);
+      const [ux, uy] = pt(busP, lc.sC);
+      svgLines.push(`<line x1="${tx}" y1="${ty}" x2="${ux}" y2="${uy}" stroke="${lineColor}" stroke-width="1.5"/>`);
+      for (const c of n.children) {
+        const [cx1, cy1] = pt(busP, c.sC);
+        const [cx2, cy2] = pt(c.pP, c.sC);
+        svgLines.push(`<line x1="${cx1}" y1="${cy1}" x2="${cx2}" y2="${cy2}" stroke="${lineColor}" stroke-width="1.5"/>`);
+      }
+    }
+    for (const c of n.children) drawConn(c, ci);
+  }
+
+  // Root uses neutral style; each top-level branch gets a color index
+  drawConn(lr, -1);
+  drawNode(lr, -1);
+  // Override: re-draw top-level children with their branch colors
+  // Actually, we draw root first, then each branch subtree with its color
+  // Clear and redraw properly:
+  svgLines.length = 0; svgRects.length = 0; svgTexts.length = 0;
+  // Draw root connections (root → bus → top children)
+  {
+    const busP = lr.pP + lr.pE + H_GAP;
+    if (lr.children.length === 1) {
+      const c = lr.children[0];
+      const [x1, y1] = pt(lr.pP + lr.pE, lr.sC);
+      const [x2, y2] = pt(c.pP, c.sC);
+      svgLines.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#888" stroke-width="1.5"/>`);
+    } else if (lr.children.length >= 2) {
+      const [ax, ay] = pt(lr.pP + lr.pE, lr.sC);
+      const [bx, by] = pt(busP, lr.sC);
+      svgLines.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="#888" stroke-width="1.5"/>`);
+      const fc = lr.children[0], lc = lr.children[lr.children.length - 1];
+      const [tx, ty] = pt(busP, fc.sC);
+      const [ux, uy] = pt(busP, lc.sC);
+      svgLines.push(`<line x1="${tx}" y1="${ty}" x2="${ux}" y2="${uy}" stroke="#888" stroke-width="1.5"/>`);
+      for (let i = 0; i < lr.children.length; i++) {
+        const c = lr.children[i];
+        const [cx1, cy1] = pt(busP, c.sC);
+        const [cx2, cy2] = pt(c.pP, c.sC);
+        svgLines.push(`<line x1="${cx1}" y1="${cy1}" x2="${cx2}" y2="${cy2}" stroke="${branchColor(i).line}" stroke-width="1.5"/>`);
+      }
+    }
+  }
+  // Draw root node
+  {
+    const [rx, ry] = dir === "TD" ? [lr.sC - lr.sE / 2, lr.pP] : dir === "RL" ? [-(lr.pP + lr.pE), lr.sC - lr.sE / 2] : [lr.pP, lr.sC - lr.sE / 2];
+    const [rw, rh] = dir === "TD" ? [lr.sE, lr.pE] : [lr.pE, lr.sE];
+    svgRects.push(`<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="${RX}" ry="${RX}" fill="${ROOT_STYLE.fill}" stroke="${ROOT_STYLE.stroke}" stroke-width="1.5"/>`);
+    svgTexts.push(`<text x="${rx + rw / 2}" y="${ry + rh / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}" font-weight="bold" fill="currentColor">${escapeHtml(lr.title)}</text>`);
+  }
+  // Draw each branch subtree with its color
+  for (let i = 0; i < lr.children.length; i++) {
+    drawConn(lr.children[i], i);
+    drawNode(lr.children[i], i);
+  }
+
+  const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  (function calcB(n: LNode) {
+    const [rx, ry] = dir === "TD" ? [n.sC - n.sE / 2, n.pP] : dir === "RL" ? [-(n.pP + n.pE), n.sC - n.sE / 2] : [n.pP, n.sC - n.sE / 2];
+    const [rw, rh] = dir === "TD" ? [n.sE, n.pE] : [n.pE, n.sE];
+    b.x0 = Math.min(b.x0, rx); b.y0 = Math.min(b.y0, ry);
+    b.x1 = Math.max(b.x1, rx + rw); b.y1 = Math.max(b.y1, ry + rh);
+    for (const c of n.children) calcB(c);
+  })(lr);
+
+  const pad = 10;
+  const w = b.x1 - b.x0 + pad * 2, h = b.y1 - b.y0 + pad * 2;
+  const tx = -b.x0 + pad, ty = -b.y0 + pad;
+
+  return `<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<g transform="translate(${tx},${ty})">` +
+    svgLines.join("") + svgRects.join("") + svgTexts.join("") +
+    `</g></svg></div>`;
+}
+
+// ── Fishbone (Ishikawa) renderer ──
+
+function renderFishboneSvg(root: XmindNode, layout: XmindLayout): string {
+  const FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40, RX = 4;
+  const SPINE_EXTRA = 40;       // extra spine beyond last rib
+  const RIB_SPACING = 160;      // horizontal distance between ribs along spine
+  const RIB_ANGLE_DX = 50;      // horizontal component of diagonal rib
+  const RIB_ANGLE_DY = 60;      // vertical component of diagonal rib
+  const rightHeaded = layout !== "fishbone-left";
+
+  const ribs = root.children;
+  const spineLen = ribs.length > 0 ? (ribs.length - 1) * RIB_SPACING + SPINE_EXTRA * 2 : 200;
+
+  // Head (root) position: at right end of spine for rightHeaded, left end for leftHeaded
+  const headW = Math.max(MIN_W, estimateTextWidth(root.title, FS) + PAD_X * 2);
+  const headH = FS + PAD_Y * 2;
+
+  const svgLines: string[] = [];
+  const svgRects: string[] = [];
+  const svgTexts: string[] = [];
+
+  // Spine y = 0, spine runs along x-axis
+  const spineY = 0;
+  let spineLeft: number, spineRight: number;
+
+  if (rightHeaded) {
+    spineRight = spineLen;
+    spineLeft = 0;
+  } else {
+    spineRight = 0;
+    spineLeft = -spineLen;
+  }
+
+  // Draw spine line
+  svgLines.push(`<line x1="${spineLeft}" y1="${spineY}" x2="${spineRight}" y2="${spineY}" stroke="#888" stroke-width="2"/>`);
+
+  // Draw arrowhead at the head end
+  const arrowEnd = rightHeaded ? spineRight : spineLeft;
+  const arrowDir = rightHeaded ? 1 : -1;
+  svgLines.push(`<line x1="${arrowEnd - arrowDir * 12}" y1="${spineY - 6}" x2="${arrowEnd}" y2="${spineY}" stroke="#888" stroke-width="2"/>`);
+  svgLines.push(`<line x1="${arrowEnd - arrowDir * 12}" y1="${spineY + 6}" x2="${arrowEnd}" y2="${spineY}" stroke="#888" stroke-width="2"/>`);
+
+  // Draw root label at the head
+  const headX = rightHeaded ? spineRight + 5 : spineLeft - headW - 5;
+  svgRects.push(`<rect x="${headX}" y="${spineY - headH / 2}" width="${headW}" height="${headH}" rx="${RX}" ry="${RX}" fill="${ROOT_STYLE.fill}" stroke="${ROOT_STYLE.stroke}" stroke-width="1.5"/>`);
+  svgTexts.push(`<text x="${headX + headW / 2}" y="${spineY + FS * 0.35}" text-anchor="middle" font-size="${FS}" font-weight="bold" fill="currentColor">${escapeHtml(root.title)}</text>`);
+
+  // Place ribs along spine, alternating above/below
+  for (let i = 0; i < ribs.length; i++) {
+    const rib = ribs[i];
+    const bc = branchColor(i);
+    // x position along spine: spread evenly, starting from SPINE_EXTRA
+    const ribBaseX = rightHeaded
+      ? spineLeft + SPINE_EXTRA + i * RIB_SPACING
+      : spineRight - SPINE_EXTRA - i * RIB_SPACING;
+
+    // Alternate: even index → above (negative y), odd → below (positive y)
+    const above = i % 2 === 0;
+    const dy = above ? -RIB_ANGLE_DY : RIB_ANGLE_DY;
+    const dx = rightHeaded ? RIB_ANGLE_DX : -RIB_ANGLE_DX;
+
+    const ribEndX = ribBaseX + dx;
+    const ribEndY = spineY + dy;
+
+    // Diagonal rib line from spine to rib label
+    svgLines.push(`<line x1="${ribBaseX}" y1="${spineY}" x2="${ribEndX}" y2="${ribEndY}" stroke="${bc.line}" stroke-width="1.5"/>`);
+
+    // Rib label box
+    const ribW = Math.max(MIN_W, estimateTextWidth(rib.title, FS) + PAD_X * 2);
+    const ribH = FS + PAD_Y * 2;
+    const ribBoxX = ribEndX - ribW / 2;
+    const ribBoxY = above ? ribEndY - ribH : ribEndY;
+    svgRects.push(`<rect x="${ribBoxX}" y="${ribBoxY}" width="${ribW}" height="${ribH}" rx="${RX}" ry="${RX}" fill="${bc.fill}" stroke="${bc.stroke}" stroke-width="1"/>`);
+    svgTexts.push(`<text x="${ribBoxX + ribW / 2}" y="${ribBoxY + ribH / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}" fill="currentColor">${escapeHtml(rib.title)}</text>`);
+
+    // Sub-causes: small horizontal lines off the diagonal rib
+    if (rib.children.length > 0) {
+      const subFS = 11;
+      for (let j = 0; j < rib.children.length; j++) {
+        const sub = rib.children[j];
+        // Position along the diagonal
+        const t = (j + 1) / (rib.children.length + 1);
+        const sx = ribBaseX + dx * t;
+        const sy = spineY + dy * t;
+
+        // Horizontal line extending from the diagonal
+        const subW = Math.max(30, estimateTextWidth(sub.title, subFS) + 8);
+        const subLineLen = subW + 6;
+        const subEndX = sx + (rightHeaded ? -subLineLen : subLineLen);
+        svgLines.push(`<line x1="${sx}" y1="${sy}" x2="${subEndX}" y2="${sy}" stroke="${bc.line}" stroke-width="1" opacity="0.6"/>`);
+        const textX = rightHeaded ? subEndX - 3 : subEndX + 3;
+        const anchor = rightHeaded ? "end" : "start";
+        svgTexts.push(`<text x="${textX}" y="${sy + subFS * 0.35}" text-anchor="${anchor}" font-size="${subFS}" fill="${bc.stroke}">${escapeHtml(sub.title)}</text>`);
+      }
+    }
+  }
+
+  // Calculate bounds
+  let bx0 = spineLeft - 10, bx1 = spineRight + 10;
+  let by0 = -10, by1 = 10;
+  // Account for head label
+  bx0 = Math.min(bx0, headX); bx1 = Math.max(bx1, headX + headW);
+  by0 = Math.min(by0, spineY - headH / 2); by1 = Math.max(by1, spineY + headH / 2);
+
+  for (let i = 0; i < ribs.length; i++) {
+    const rib = ribs[i];
+    const ribBaseX = rightHeaded
+      ? spineLeft + SPINE_EXTRA + i * RIB_SPACING
+      : spineRight - SPINE_EXTRA - i * RIB_SPACING;
+    const above = i % 2 === 0;
+    const dy = above ? -RIB_ANGLE_DY : RIB_ANGLE_DY;
+    const dx = rightHeaded ? RIB_ANGLE_DX : -RIB_ANGLE_DX;
+    const ribEndX = ribBaseX + dx;
+    const ribEndY = spineY + dy;
+    const ribW = Math.max(MIN_W, estimateTextWidth(rib.title, FS) + PAD_X * 2);
+    const ribH = FS + PAD_Y * 2;
+    const ribBoxX = ribEndX - ribW / 2;
+    const ribBoxY = above ? ribEndY - ribH : ribEndY;
+    bx0 = Math.min(bx0, ribBoxX); bx1 = Math.max(bx1, ribBoxX + ribW);
+    by0 = Math.min(by0, ribBoxY); by1 = Math.max(by1, ribBoxY + ribH);
+
+    if (rib.children.length > 0) {
+      const subFS = 11;
+      for (let j = 0; j < rib.children.length; j++) {
+        const sub = rib.children[j];
+        const t = (j + 1) / (rib.children.length + 1);
+        const sx = ribBaseX + dx * t;
+        const sy = spineY + dy * t;
+        const subW = Math.max(30, estimateTextWidth(sub.title, subFS) + 8);
+        const subLineLen = subW + 6;
+        const subEndX = sx + (rightHeaded ? -subLineLen : subLineLen);
+        bx0 = Math.min(bx0, Math.min(sx, subEndX) - subW);
+        bx1 = Math.max(bx1, Math.max(sx, subEndX) + subW);
+        by0 = Math.min(by0, sy - subFS); by1 = Math.max(by1, sy + subFS);
+      }
+    }
+  }
+
+  const pad = 15;
+  const w = bx1 - bx0 + pad * 2, h = by1 - by0 + pad * 2;
+  const tx = -bx0 + pad, ty = -by0 + pad;
+
+  return `<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<g transform="translate(${tx},${ty})">` +
+    svgLines.join("") + svgRects.join("") + svgTexts.join("") +
+    `</g></svg></div>`;
+}
+
+// ── Tree-down renderer (tree.right / tree.left: vertical trunk, side branches) ──
+
+function renderTreeDownSvg(root: XmindNode, layout: XmindLayout): string {
+  const FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40;
+  const V_GAP = 6, TRUNK_GAP = 15, BRANCH_LEN = 25, RX = 4;
+  const side: "right" | "left" = layout === "tree-down-left" ? "left" : "right";
+
+  interface TNode {
+    title: string; children: TNode[];
+    w: number; h: number; subtreeH: number;
+    x: number; y: number;
+  }
+
+  function measure(node: XmindNode): TNode {
+    const w = Math.max(MIN_W, estimateTextWidth(node.title, FS) + PAD_X * 2);
+    const h = FS + PAD_Y * 2;
+    const children = node.children.map(measure);
+    let subtreeH = h;
+    if (children.length > 0) {
+      let ch = 0;
+      for (const c of children) ch += c.subtreeH;
+      ch += V_GAP * (children.length - 1);
+      subtreeH = h + TRUNK_GAP + ch;
+    }
+    return { title: node.title, children, w, h, subtreeH, x: 0, y: 0 };
+  }
+
+  function position(n: TNode, x: number, y: number): void {
+    n.x = x; n.y = y;
+    if (n.children.length === 0) return;
+    const trunkX = x + n.w / 2;
+    let curY = y + n.h + TRUNK_GAP;
+    for (const c of n.children) {
+      const cx = side === "right" ? trunkX + BRANCH_LEN : trunkX - BRANCH_LEN - c.w;
+      position(c, cx, curY);
+      curY += c.subtreeH + V_GAP;
+    }
+  }
+
+  const svgLines: string[] = [];
+  const svgRects: string[] = [];
+  const svgTexts: string[] = [];
+
+  function drawNode(n: TNode, ci: number): void {
+    const st = ci < 0 ? ROOT_STYLE : branchColor(ci);
+    const fw = ci < 0 ? " font-weight=\"bold\"" : "";
+    svgRects.push(`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${RX}" ry="${RX}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="1"/>`);
+    svgTexts.push(`<text x="${n.x + n.w / 2}" y="${n.y + n.h / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}"${fw} fill="currentColor">${escapeHtml(n.title)}</text>`);
+    for (const c of n.children) drawNode(c, ci);
+  }
+
+  function drawConn(n: TNode, ci: number): void {
+    if (n.children.length === 0) return;
+    const trunkX = n.x + n.w / 2;
+    const trunkTop = n.y + n.h;
+    const last = n.children[n.children.length - 1];
+    const trunkBot = last.y + last.h / 2;
+    const lineColor = ci < 0 ? "#888" : branchColor(ci).line;
+    svgLines.push(`<line x1="${trunkX}" y1="${trunkTop}" x2="${trunkX}" y2="${trunkBot}" stroke="${lineColor}" stroke-width="1.5"/>`);
+    for (const c of n.children) {
+      const by = c.y + c.h / 2;
+      const bEnd = side === "right" ? c.x : c.x + c.w;
+      svgLines.push(`<line x1="${trunkX}" y1="${by}" x2="${bEnd}" y2="${by}" stroke="${lineColor}" stroke-width="1.5"/>`);
+    }
+    for (const c of n.children) drawConn(c, ci);
+  }
+
+  const tree = measure(root);
+  position(tree, 0, 0);
+  // Draw root trunk connections with neutral color, then per-branch colors
+  {
+    const trunkX = tree.x + tree.w / 2;
+    const trunkTop = tree.y + tree.h;
+    if (tree.children.length > 0) {
+      const last = tree.children[tree.children.length - 1];
+      const trunkBot = last.y + last.h / 2;
+      svgLines.push(`<line x1="${trunkX}" y1="${trunkTop}" x2="${trunkX}" y2="${trunkBot}" stroke="#888" stroke-width="1.5"/>`);
+      for (let i = 0; i < tree.children.length; i++) {
+        const c = tree.children[i];
+        const by = c.y + c.h / 2;
+        const bEnd = side === "right" ? c.x : c.x + c.w;
+        svgLines.push(`<line x1="${trunkX}" y1="${by}" x2="${bEnd}" y2="${by}" stroke="${branchColor(i).line}" stroke-width="1.5"/>`);
+      }
+    }
+  }
+  // Draw root node
+  drawNode(tree, -1);
+  // Override: redraw children with branch colors
+  svgRects.length = 1; svgTexts.length = 1; // keep root rect+text
+  for (let i = 0; i < tree.children.length; i++) {
+    drawConn(tree.children[i], i);
+    drawNode(tree.children[i], i);
+  }
+
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  (function bounds(n: TNode) {
+    x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y);
+    x1 = Math.max(x1, n.x + n.w); y1 = Math.max(y1, n.y + n.h);
+    for (const c of n.children) bounds(c);
+  })(tree);
+
+  const pad = 10;
+  const w = x1 - x0 + pad * 2, h = y1 - y0 + pad * 2;
+  const tx = -x0 + pad, ty = -y0 + pad;
+
+  return `<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<g transform="translate(${tx},${ty})">` +
+    svgLines.join("") + svgRects.join("") + svgTexts.join("") +
+    `</g></svg></div>`;
+}
+
+// ── SVG Table renderer (matrix / table types) ──
+
+function renderSvgTable(root: XmindNode): string {
+  const FS = 13, PAD_X = 8, PAD_Y = 6, MIN_W = 60;
+  const ROW_H = FS + PAD_Y * 2;
+  const rows = root.children;
+  if (rows.length === 0) {
+    return `<div class="xmind-tree-svg"><p>${escapeHtml(root.title)}: (empty)</p></div>`;
+  }
+
+  let maxCols = 0;
+  for (const r of rows) if (r.children.length > maxCols) maxCols = r.children.length;
+
+  // Column widths: col 0 = row labels, col 1..n = data
+  const colW: number[] = [];
+  let labelW = MIN_W;
+  for (const r of rows) labelW = Math.max(labelW, estimateTextWidth(r.title, FS) + PAD_X * 2);
+  colW.push(labelW);
+  for (let c = 0; c < maxCols; c++) {
+    let w = MIN_W;
+    for (const r of rows) {
+      if (r.children[c]) w = Math.max(w, estimateTextWidth(r.children[c].title, FS) + PAD_X * 2);
+    }
+    colW.push(w);
+  }
+
+  const totalW = colW.reduce((a, b) => a + b, 0);
+  const headerH = ROW_H;
+  const totalH = headerH + ROW_H * rows.length;
+  const parts: string[] = [];
+
+  // Title header
+  parts.push(`<rect x="0" y="0" width="${totalW}" height="${headerH}" fill="rgba(128,128,128,0.15)" stroke="#999" stroke-width="1"/>`);
+  parts.push(`<text x="${totalW / 2}" y="${headerH / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}" font-weight="bold" fill="currentColor">${escapeHtml(root.title)}</text>`);
+
+  for (let r = 0; r < rows.length; r++) {
+    const y = headerH + r * ROW_H;
+    let x = 0;
+    // Row label
+    parts.push(`<rect x="${x}" y="${y}" width="${colW[0]}" height="${ROW_H}" fill="rgba(128,128,128,0.08)" stroke="#999" stroke-width="1"/>`);
+    parts.push(`<text x="${x + colW[0] / 2}" y="${y + ROW_H / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}" fill="currentColor">${escapeHtml(rows[r].title)}</text>`);
+    x += colW[0];
+    // Data cells
+    for (let c = 0; c < maxCols; c++) {
+      const cell = rows[r].children[c];
+      const cellText = cell ? cell.title : "";
+      parts.push(`<rect x="${x}" y="${y}" width="${colW[c + 1]}" height="${ROW_H}" fill="none" stroke="#999" stroke-width="1"/>`);
+      parts.push(`<text x="${x + colW[c + 1] / 2}" y="${y + ROW_H / 2 + FS * 0.35}" text-anchor="middle" font-size="${FS}" fill="currentColor">${escapeHtml(cellText)}</text>`);
+      x += colW[c + 1];
+    }
+  }
+
+  const pad = 10;
+  const w = totalW + pad * 2, h = totalH + pad * 2;
+
+  return `<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<g transform="translate(${pad},${pad})">` +
+    parts.join("") +
+    `</g></svg></div>`;
+}
+
+// ── XMind JSON format (XMind 8+) ──
+
+interface XmindJsonTopic {
+  title?: string;
+  children?: { attached?: XmindJsonTopic[] };
+  structureClass?: string;
+}
+
+interface XmindJsonSheet {
+  title?: string;
+  rootTopic?: XmindJsonTopic;
+}
+
+function jsonTopicToTree(t: XmindJsonTopic): XmindNode {
+  return {
+    title: t.title ?? "",
+    children: (t.children?.attached ?? []).map(jsonTopicToTree),
+  };
+}
+
+function sheetJsonToTree(sheet: XmindJsonSheet): XmindSheet {
+  const sc = sheet.rootTopic?.structureClass ?? null;
+  return {
+    title: sheet.title ?? "Untitled",
+    root: sheet.rootTopic ? jsonTopicToTree(sheet.rootTopic) : null,
+    layout: structureClassToLayout(sc),
+  };
+}
+
+// ── XMind XML format (classic) ──
+
+function xmlTopicToTree(topic: Element): XmindNode {
+  const title = topic.querySelector(":scope > title")?.textContent ?? "";
+  const children: XmindNode[] = [];
+  const attached = topic.querySelector(":scope > children > topics[type='attached']");
+  if (attached) {
+    attached.querySelectorAll(":scope > topic").forEach((child) => {
+      children.push(xmlTopicToTree(child));
+    });
+  }
+  return { title, children };
+}
+
+function xmindXmlToMermaid(xmlText: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "text/xml");
+  const sheets = doc.querySelectorAll("sheet");
+  const sheetTrees: XmindSheet[] = [];
+
+  sheets.forEach((sheet) => {
+    const rootTopic = sheet.querySelector(":scope > topic");
+    const sc = rootTopic?.getAttribute("structure-class") ?? null;
+    sheetTrees.push({
+      title: sheet.querySelector(":scope > title")?.textContent ?? "Untitled",
+      root: rootTopic ? xmlTopicToTree(rootTopic) : null,
+      layout: structureClassToLayout(sc),
+    });
+  });
+
+  return xmindSheetsToMermaid(sheetTrees);
 }
 
 const MDV_TRANSFER_DB = "mdv-fs-transfer";
@@ -843,7 +1744,7 @@ function mount(): void {
       <h1>Markdown Viewer</h1>
       <p class="hint" id="filename-display"></p>
       <div class="controls">
-        <input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,text/markdown,text/plain" hidden />
+        <input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,.xmind,text/markdown,text/plain" hidden />
         <button type="button" id="btn-open-file" class="btn btn--icon" aria-label="Open file" title="Open file">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         </button>
@@ -876,7 +1777,7 @@ function mount(): void {
       <section class="panel" id="panel-preview">
         <label for="preview-wrap">Preview</label>
         <div id="preview-wrap" tabindex="-1">
-          <div id="usage-watermark">Drag a .md or .puml file or a project folder onto the page, or use Open file</div>
+          <div id="usage-watermark">Drag a .md, .puml, or .xmind file or a project folder onto the page, or use Open file</div>
           <article id="preview"></article>
         </div>
       </section>
@@ -1164,7 +2065,7 @@ function mount(): void {
       return;
     }
 
-    if (!isMarkdownDocumentPath(currentFileName)) {
+    if (!isMarkdownDocumentPath(currentFileName) && !isXmindDocumentPath(currentFileName)) {
       const lang = prismLangForSourcePreview(currentFileName, source.value);
       const escaped = escapeHtml(source.value);
       const langClass = lang ? ` class="language-${lang}"` : "";
@@ -1211,10 +2112,13 @@ function mount(): void {
       return;
     }
 
-    const preprocessed = preprocessMyST(source.value);
+    const markdownContent = isXmindDocumentPath(currentFileName) && xmindRenderContent != null
+      ? xmindRenderContent
+      : source.value;
+    const preprocessed = preprocessMyST(markdownContent);
     const raw = await marked.parse(preprocessed);
     preview.innerHTML = DOMPurify.sanitize(raw, {
-      ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "svg", "path", "rect", "polyline", "span"],
+      ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "svg", "g", "path", "rect", "polyline", "line", "text", "span"],
       ADD_ATTR: [
         "loading",
         "target",
@@ -1237,12 +2141,21 @@ function mount(): void {
         "d",
         "x",
         "y",
+        "x1",
+        "y1",
+        "x2",
+        "y2",
         "width",
         "height",
         "rx",
         "ry",
         "points",
         "aria-hidden",
+        "text-anchor",
+        "font-size",
+        "font-weight",
+        "transform",
+        "opacity",
       ],
     });
 
@@ -1446,7 +2359,13 @@ function mount(): void {
   async function applyFileHandleOpen(h: FileSystemFileHandle): Promise<void> {
     fileHandle = h;
     const file = await h.getFile();
-    const text = await file.text();
+    let text: string;
+    if (isXmindDocumentPath(h.name)) {
+      const buf = await file.arrayBuffer();
+      text = await parseXmindToMarkdown(buf);
+    } else {
+      text = await file.text();
+    }
     source.value = text;
     lastSavedContent = text;
     hideWatermark();
@@ -1562,13 +2481,23 @@ function mount(): void {
     workspaceRootHandle = null;
     currentRelPathInWorkspace = null;
     currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name || "document.md";
-    void file.text().then((text) => {
-      source.value = text;
-      lastSavedContent = text;
-      hideWatermark();
-      updateFilenameDisplay();
-      scheduleRender();
-    });
+    if (isXmindDocumentPath(currentFileName)) {
+      void file.arrayBuffer().then((buf) => parseXmindToMarkdown(buf)).then((text) => {
+        source.value = text;
+        lastSavedContent = text;
+        hideWatermark();
+        updateFilenameDisplay();
+        scheduleRender();
+      });
+    } else {
+      void file.text().then((text) => {
+        source.value = text;
+        lastSavedContent = text;
+        hideWatermark();
+        updateFilenameDisplay();
+        scheduleRender();
+      });
+    }
   }
 
   async function openFileWithPicker(): Promise<void> {
@@ -1584,6 +2513,10 @@ function mount(): void {
               description: "PlantUML diagrams",
               accept: { "text/plain": [".puml", ".plantuml"] },
             },
+            {
+              description: "XMind mind maps",
+              accept: { "application/octet-stream": [".xmind"] },
+            },
           ],
           multiple: false,
         };
@@ -1596,7 +2529,13 @@ function mount(): void {
         fileHandle = handles[0]!;
         const file = await fileHandle.getFile();
         currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
-        const text = await file.text();
+        let text: string;
+        if (isXmindDocumentPath(currentFileName)) {
+          const buf = await file.arrayBuffer();
+          text = await parseXmindToMarkdown(buf);
+        } else {
+          text = await file.text();
+        }
         source.value = text;
         lastSavedContent = text;
         hideWatermark();
@@ -1623,7 +2562,13 @@ function mount(): void {
     try {
       const file = await fileHandle.getFile();
       currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
-      const text = await file.text();
+      let text: string;
+      if (isXmindDocumentPath(currentFileName)) {
+        const buf = await file.arrayBuffer();
+        text = await parseXmindToMarkdown(buf);
+      } else {
+        text = await file.text();
+      }
       source.value = text;
       lastSavedContent = text;
       hideWatermark();
@@ -1777,7 +2722,13 @@ function mount(): void {
             fileHandle = handle as FileSystemFileHandle;
             const file = await fileHandle.getFile();
             currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
-            const text = await file.text();
+            let text: string;
+            if (isXmindDocumentPath(currentFileName)) {
+              const buf = await file.arrayBuffer();
+              text = await parseXmindToMarkdown(buf);
+            } else {
+              text = await file.text();
+            }
             source.value = text;
             lastSavedContent = text;
             hideWatermark();

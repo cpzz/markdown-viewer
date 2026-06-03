@@ -665,6 +665,7 @@ main.single-panel .resizer { display: none; }
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder/dist/plantuml-encoder.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
@@ -747,6 +748,7 @@ main.single-panel .resizer { display: none; }
 
   var MARKDOWN_DOC_EXT = { md: 1, mdx: 1, markdown: 1, mdown: 1, mkd: 1, qmd: 1, rmd: 1, mdc: 1 };
   var PLANTUML_DOC_EXT = { puml: 1, plantuml: 1 };
+  var XMIND_DOC_EXT = { xmind: 1 };
 
   function pathBasename(p) {
     var i1 = p.lastIndexOf("/");
@@ -774,6 +776,757 @@ main.single-panel .resizer { display: none; }
   function isMarkdownDocumentPath(pathOrName) {
     var ext = pathFileExtension(pathOrName);
     return !!ext && MARKDOWN_DOC_EXT.hasOwnProperty(ext);
+  }
+
+  function isXmindDocumentPath(pathOrName) {
+    var ext = pathFileExtension(pathOrName);
+    return !!ext && XMIND_DOC_EXT.hasOwnProperty(ext);
+  }
+
+  var xmindRenderContent = null;
+
+  function prettyPrintXml(xml) {
+    var indent = 0, TAB = '  ';
+    return xml
+      .replace(/></g, '>\n<')
+      .split('\n')
+      .map(function(line) {
+        var t = line.trim();
+        if (!t) return '';
+        var isClose = /^<\//.test(t);
+        var isSelfClose = /\/>$/.test(t) || /^<\?/.test(t) || /^<!/.test(t);
+        var isBalanced = t.charAt(0) === '<' && !isClose && !isSelfClose && t.indexOf('</') !== -1;
+        var isOpen = t.charAt(0) === '<' && !isClose && !isSelfClose && !isBalanced;
+        if (isClose) indent = Math.max(0, indent - 1);
+        var result = (new Array(indent + 1)).join(TAB) + t;
+        if (isOpen) indent++;
+        return result;
+      })
+      .filter(function(l) { return l !== ''; })
+      .join('\n');
+}
+
+  async function parseXmindToMarkdown(data) {
+    var zip = await JSZip.loadAsync(data);
+    var jsonFile = zip.file("content.json");
+    if (jsonFile) {
+      var text = await jsonFile.async("string");
+      var sheets = JSON.parse(text);
+      xmindRenderContent = xmindSheetsToMermaid(sheets.map(sheetJsonToTree));
+      try { return JSON.stringify(JSON.parse(text), null, 2); } catch(e) { return text; }
+    }
+    var xmlFile = zip.file("content.xml");
+    if (xmlFile) {
+      var text = await xmlFile.async("string");
+      xmindRenderContent = xmindXmlToMermaid(text);
+      return prettyPrintXml(text);
+    }
+    throw new Error("No content.xml or content.json found in .xmind file");
+  }
+
+  function structureClassToLayout(sc) {
+    if (!sc) return "mindmap";
+    if (sc.indexOf("logic.right") !== -1) return "flowchart-lr";
+    if (sc.indexOf("logic.left") !== -1) return "flowchart-rl";
+    if (sc.indexOf("tree.right") !== -1) return "tree-down-right";
+    if (sc.indexOf("tree.left") !== -1) return "tree-down-left";
+    if (sc.indexOf("fishbone.rightHeaded") !== -1) return "fishbone-right";
+    if (sc.indexOf("fishbone.leftHeaded") !== -1) return "fishbone-left";
+    if (sc.indexOf("org-chart") !== -1) return "flowchart-td";
+    if (sc.indexOf("timeline") !== -1) return "flowchart-lr";
+    if (sc.indexOf("matrix") !== -1 || sc.indexOf("table") !== -1) return "svg-table";
+    return "mindmap";
+  }
+
+  function xmindSheetsToMermaid(sheets) {
+    var blocks = [];
+    for (var i = 0; i < sheets.length; i++) {
+      if (!sheets[i].root) continue;
+      if (sheets[i].layout === "markdown-table") {
+        blocks.push(renderMarkdownTable(sheets[i].root));
+      } else if (sheets[i].layout === "svg-table") {
+        blocks.push(renderSvgTable(sheets[i].root));
+      } else if (sheets[i].layout === "tree-down-right" || sheets[i].layout === "tree-down-left") {
+        blocks.push(renderTreeDownSvg(sheets[i].root, sheets[i].layout));
+      } else if (sheets[i].layout === "fishbone-right" || sheets[i].layout === "fishbone-left") {
+        blocks.push(renderFishboneSvg(sheets[i].root, sheets[i].layout));
+      } else if (sheets[i].layout === "mindmap") {
+        blocks.push(renderMindmapSvg(sheets[i].root));
+      } else {
+        blocks.push(renderBusTreeSvg(sheets[i].root, sheets[i].layout));
+      }
+    }
+    return blocks.join("\n\n");
+  }
+
+  function renderMarkdownTable(root) {
+    var lines = ["## " + root.title];
+    var rows = root.children;
+    if (rows.length === 0) return lines.join("\n");
+    var maxCols = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].children.length > maxCols) maxCols = rows[i].children.length;
+    }
+    if (maxCols === 0) {
+      lines.push("");
+      lines.push("| Item |");
+      lines.push("| --- |");
+      for (var i = 0; i < rows.length; i++) {
+        lines.push("| " + mdTableEscape(rows[i].title) + " |");
+      }
+      return lines.join("\n");
+    }
+    var headers = [""];
+    for (var c = 0; c < maxCols; c++) {
+      headers.push(rows[0].children[c] ? rows[0].children[c].title : "Col " + (c + 1));
+    }
+    lines.push("");
+    lines.push("| " + headers.map(mdTableEscape).join(" | ") + " |");
+    lines.push("| " + headers.map(function() { return "---"; }).join(" | ") + " |");
+    for (var i = 0; i < rows.length; i++) {
+      var cells = [rows[i].title];
+      for (var c = 0; c < maxCols; c++) {
+        var child = rows[i].children[c];
+        if (child) {
+          var sub = child.children.map(function(n) { return n.title; }).filter(Boolean);
+          cells.push(sub.length > 0 ? child.title + " (" + sub.join(", ") + ")" : child.title);
+        } else {
+          cells.push("");
+        }
+      }
+      lines.push("| " + cells.map(mdTableEscape).join(" | ") + " |");
+    }
+    return lines.join("\n");
+  }
+
+  function mdTableEscape(s) {
+    return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
+  }
+
+  var BRANCH_COLORS = [
+    { stroke: "#4285f4", fill: "rgba(66,133,244,0.10)", line: "#4285f4" },
+    { stroke: "#ea4335", fill: "rgba(234,67,53,0.10)", line: "#ea4335" },
+    { stroke: "#34a853", fill: "rgba(52,168,83,0.10)", line: "#34a853" },
+    { stroke: "#fbbc05", fill: "rgba(251,188,5,0.15)", line: "#cc9900" },
+    { stroke: "#8e24aa", fill: "rgba(142,36,170,0.10)", line: "#8e24aa" },
+    { stroke: "#e67c00", fill: "rgba(230,124,0,0.10)", line: "#e67c00" },
+    { stroke: "#00acc1", fill: "rgba(0,172,193,0.10)", line: "#00acc1" },
+    { stroke: "#d81b60", fill: "rgba(216,27,96,0.10)", line: "#d81b60" }
+  ];
+  var ROOT_STYLE = { stroke: "#555", fill: "rgba(80,80,80,0.12)" };
+  function branchColor(idx) { return BRANCH_COLORS[idx % BRANCH_COLORS.length]; }
+
+  function estimateTextWidth(text, fontSize) {
+    var w = 0;
+    for (var i = 0; i < text.length; i++) {
+      w += text.charCodeAt(i) > 0x2e7f ? fontSize : fontSize * 0.55;
+    }
+    return w;
+  }
+
+  function renderMindmapSvg(root) {
+    var FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40;
+    var V_GAP = 6, H_GAP = 20, BUS2C = 20, RX = 4;
+    var ROOT_RX = 16;
+
+    function measure(node, depth) {
+      if (depth === undefined) depth = 1;
+      var h = depth === 1 ? FS + PAD_Y * 2 + 4 : FS + PAD_Y * 2;
+      var w = Math.max(MIN_W, estimateTextWidth(node.title, FS) + PAD_X * 2);
+      var children = [];
+      for (var i = 0; i < node.children.length; i++) children.push(measure(node.children[i], depth + 1));
+      var subH = h;
+      if (children.length > 0) {
+        var t = 0;
+        for (var i = 0; i < children.length; i++) t += children[i].subH;
+        t += V_GAP * (children.length - 1);
+        subH = Math.max(h, t);
+      }
+      return { title: node.title, children: children, w: w, h: h, subH: subH, x: 0, y: 0, depth: depth };
+    }
+
+    function layoutSide(nodes, startX, centerY, goRight) {
+      var totalH = 0;
+      for (var i = 0; i < nodes.length; i++) totalH += nodes[i].subH;
+      totalH += V_GAP * (nodes.length - 1);
+      var cur = centerY - totalH / 2;
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        var cy = cur + n.subH / 2;
+        n.x = goRight ? startX : startX - n.w;
+        n.y = cy - n.h / 2;
+        if (n.children.length > 0) {
+          var childX = goRight ? n.x + n.w + H_GAP + BUS2C : n.x - H_GAP - BUS2C;
+          layoutSide(n.children, childX, cy, goRight);
+        }
+        cur += n.subH + V_GAP;
+      }
+    }
+
+    var svgL = [], svgR = [], svgT = [];
+
+    function drawNodeBox(n, ci) {
+      var st = branchColor(ci);
+      var d = n.depth;
+      var fill = st.fill, fillAttr = '', strokeW = '1', fw = 'normal';
+      if (d <= 1) { strokeW = '1.5'; fw = 'bold'; }
+      else if (d === 2) { fillAttr = ' fill-opacity="0.4"'; }
+      else { fill = 'none'; strokeW = '0.8'; }
+      svgR.push('<rect x="' + n.x + '" y="' + n.y + '" width="' + n.w + '" height="' + n.h + '" rx="' + RX + '" ry="' + RX + '" fill="' + fill + '"' + fillAttr + ' stroke="' + st.stroke + '" stroke-width="' + strokeW + '"/>');
+      svgT.push('<text x="' + (n.x + n.w / 2) + '" y="' + (n.y + n.h / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" font-weight="' + fw + '" fill="currentColor">' + escapeHtml(n.title) + '</text>');
+      for (var i = 0; i < n.children.length; i++) drawNodeBox(n.children[i], ci);
+    }
+
+    function drawBusConn(n, ci, goRight) {
+      if (n.children.length === 0) return;
+      var lineColor = branchColor(ci).line;
+      var sw = n.depth <= 1 ? '1.5' : '1';
+      var exitX = goRight ? n.x + n.w : n.x;
+      var busX = goRight ? n.x + n.w + H_GAP : n.x - H_GAP;
+      var ny = n.y + n.h / 2;
+      if (n.children.length === 1) {
+        var c = n.children[0];
+        var entryX = goRight ? c.x : c.x + c.w;
+        svgL.push('<line x1="' + exitX + '" y1="' + ny + '" x2="' + entryX + '" y2="' + (c.y + c.h / 2) + '" stroke="' + lineColor + '" stroke-width="' + sw + '"/>');
+      } else {
+        svgL.push('<line x1="' + exitX + '" y1="' + ny + '" x2="' + busX + '" y2="' + ny + '" stroke="' + lineColor + '" stroke-width="' + sw + '"/>');
+        var fc = n.children[0], lc = n.children[n.children.length - 1];
+        svgL.push('<line x1="' + busX + '" y1="' + (fc.y + fc.h / 2) + '" x2="' + busX + '" y2="' + (lc.y + lc.h / 2) + '" stroke="' + lineColor + '" stroke-width="' + sw + '"/>');
+        for (var i = 0; i < n.children.length; i++) {
+          var c = n.children[i];
+          var entryX = goRight ? c.x : c.x + c.w;
+          svgL.push('<line x1="' + busX + '" y1="' + (c.y + c.h / 2) + '" x2="' + entryX + '" y2="' + (c.y + c.h / 2) + '" stroke="' + lineColor + '" stroke-width="' + sw + '"/>');
+        }
+      }
+      for (var i = 0; i < n.children.length; i++) drawBusConn(n.children[i], ci, goRight);
+    }
+
+    var kids = [];
+    for (var i = 0; i < root.children.length; i++) kids.push(measure(root.children[i]));
+    var half = Math.ceil(kids.length / 2);
+    var rightKids = kids.slice(0, half);
+    var leftKids = kids.slice(half);
+
+    var rootW = Math.max(MIN_W + 20, estimateTextWidth(root.title, FS + 2) + PAD_X * 3);
+    var rootH = FS + PAD_Y * 3;
+
+    var rTotalH = 0;
+    for (var i = 0; i < rightKids.length; i++) rTotalH += rightKids[i].subH;
+    rTotalH += V_GAP * Math.max(0, rightKids.length - 1);
+    var lTotalH = 0;
+    for (var i = 0; i < leftKids.length; i++) lTotalH += leftKids[i].subH;
+    lTotalH += V_GAP * Math.max(0, leftKids.length - 1);
+    var maxH = Math.max(rTotalH, lTotalH, rootH);
+    var centerY = maxH / 2;
+
+    var rootX = -rootW / 2;
+    var rootY = centerY - rootH / 2;
+
+    var rightStartX = rootW / 2 + H_GAP + BUS2C;
+    var leftStartX = -rootW / 2 - H_GAP - BUS2C;
+    layoutSide(rightKids, rightStartX, centerY, true);
+    layoutSide(leftKids, leftStartX, centerY, false);
+
+    if (rightKids.length > 0) {
+      var busX = rootW / 2 + H_GAP;
+      svgL.push('<line x1="' + (rootW / 2) + '" y1="' + centerY + '" x2="' + busX + '" y2="' + centerY + '" stroke="#888" stroke-width="1.5"/>');
+      if (rightKids.length >= 2) {
+        svgL.push('<line x1="' + busX + '" y1="' + (rightKids[0].y + rightKids[0].h / 2) + '" x2="' + busX + '" y2="' + (rightKids[rightKids.length - 1].y + rightKids[rightKids.length - 1].h / 2) + '" stroke="#888" stroke-width="1.5"/>');
+      }
+      for (var i = 0; i < rightKids.length; i++) {
+        var c = rightKids[i];
+        svgL.push('<line x1="' + busX + '" y1="' + (c.y + c.h / 2) + '" x2="' + c.x + '" y2="' + (c.y + c.h / 2) + '" stroke="' + branchColor(i).line + '" stroke-width="1.5"/>');
+      }
+    }
+
+    if (leftKids.length > 0) {
+      var busX = -rootW / 2 - H_GAP;
+      svgL.push('<line x1="' + (-rootW / 2) + '" y1="' + centerY + '" x2="' + busX + '" y2="' + centerY + '" stroke="#888" stroke-width="1.5"/>');
+      if (leftKids.length >= 2) {
+        svgL.push('<line x1="' + busX + '" y1="' + (leftKids[0].y + leftKids[0].h / 2) + '" x2="' + busX + '" y2="' + (leftKids[leftKids.length - 1].y + leftKids[leftKids.length - 1].h / 2) + '" stroke="#888" stroke-width="1.5"/>');
+      }
+      for (var i = 0; i < leftKids.length; i++) {
+        var c = leftKids[i];
+        svgL.push('<line x1="' + busX + '" y1="' + (c.y + c.h / 2) + '" x2="' + (c.x + c.w) + '" y2="' + (c.y + c.h / 2) + '" stroke="' + branchColor(half + i).line + '" stroke-width="1.5"/>');
+      }
+    }
+
+    svgR.push('<rect x="' + rootX + '" y="' + rootY + '" width="' + rootW + '" height="' + rootH + '" rx="' + ROOT_RX + '" ry="' + ROOT_RX + '" fill="' + ROOT_STYLE.fill + '" stroke="' + ROOT_STYLE.stroke + '" stroke-width="1.5"/>');
+    svgT.push('<text x="' + (rootX + rootW / 2) + '" y="' + (rootY + rootH / 2 + (FS + 2) * 0.35) + '" text-anchor="middle" font-size="' + (FS + 2) + '" font-weight="bold" fill="currentColor">' + escapeHtml(root.title) + '</text>');
+
+    for (var i = 0; i < rightKids.length; i++) {
+      drawBusConn(rightKids[i], i, true);
+      drawNodeBox(rightKids[i], i);
+    }
+    for (var i = 0; i < leftKids.length; i++) {
+      drawBusConn(leftKids[i], half + i, false);
+      drawNodeBox(leftKids[i], half + i);
+    }
+
+    var bx0 = rootX, by0 = rootY, bx1 = rootX + rootW, by1 = rootY + rootH;
+    function calcBounds(nodes) {
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        bx0 = Math.min(bx0, n.x); by0 = Math.min(by0, n.y);
+        bx1 = Math.max(bx1, n.x + n.w); by1 = Math.max(by1, n.y + n.h);
+        calcBounds(n.children);
+      }
+    }
+    calcBounds(rightKids);
+    calcBounds(leftKids);
+    if (leftKids.length > 0) bx0 = Math.min(bx0, -rootW / 2 - H_GAP - BUS2C);
+
+    var pad = 12;
+    var w = bx1 - bx0 + pad * 2, h = by1 - by0 + pad * 2;
+    var tx = -bx0 + pad, ty = -by0 + pad;
+
+    return '<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<g transform="translate(' + tx + ',' + ty + ')">' +
+      svgL.join('') + svgR.join('') + svgT.join('') +
+      '</g></svg></div>';
+  }
+
+  function renderBusTreeSvg(root, layout) {
+    var FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40;
+    var V_GAP = 8, H_GAP = 20, BUS2C = 20, RX = 4;
+    var dir = layout === "flowchart-rl" ? "RL" : layout === "flowchart-td" ? "TD" : "LR";
+
+    function build(node) {
+      var nw = Math.max(MIN_W, estimateTextWidth(node.title, FS) + PAD_X * 2);
+      var nh = FS + PAD_Y * 2;
+      var children = [];
+      for (var i = 0; i < node.children.length; i++) children.push(build(node.children[i]));
+      var pE = dir === "TD" ? nh : nw;
+      var sE = dir === "TD" ? nw : nh;
+      var subS = sE;
+      if (children.length > 0) {
+        var t = 0; for (var i = 0; i < children.length; i++) t += children[i].subS;
+        t += V_GAP * (children.length - 1);
+        subS = Math.max(sE, t);
+      }
+      return { title: node.title, children: children, pE: pE, sE: sE, subS: subS, pP: 0, sC: 0 };
+    }
+
+    function pos(n, pP, sC) {
+      n.pP = pP; n.sC = sC;
+      if (n.children.length === 0) return;
+      var childP = pP + n.pE + H_GAP + BUS2C;
+      var t = 0; for (var i = 0; i < n.children.length; i++) t += n.children[i].subS;
+      t += V_GAP * (n.children.length - 1);
+      var cur = sC - t / 2;
+      for (var i = 0; i < n.children.length; i++) {
+        pos(n.children[i], childP, cur + n.children[i].subS / 2);
+        cur += n.children[i].subS + V_GAP;
+      }
+    }
+
+    function pt(p, s) {
+      if (dir === "TD") return [s, p];
+      if (dir === "RL") return [-p, s];
+      return [p, s];
+    }
+
+    var lr = build(root);
+    pos(lr, 0, lr.subS / 2);
+
+    var svgL = [], svgR = [], svgT = [];
+
+    function drawNode(n, ci) {
+      var rx, ry, rw, rh;
+      if (dir === "TD") { rx = n.sC - n.sE / 2; ry = n.pP; rw = n.sE; rh = n.pE; }
+      else if (dir === "RL") { rx = -(n.pP + n.pE); ry = n.sC - n.sE / 2; rw = n.pE; rh = n.sE; }
+      else { rx = n.pP; ry = n.sC - n.sE / 2; rw = n.pE; rh = n.sE; }
+      var st = ci < 0 ? ROOT_STYLE : branchColor(ci);
+      svgR.push('<rect x="' + rx + '" y="' + ry + '" width="' + rw + '" height="' + rh + '" rx="' + RX + '" ry="' + RX + '" fill="' + st.fill + '" stroke="' + st.stroke + '" stroke-width="1"/>');
+      svgT.push('<text x="' + (rx + rw / 2) + '" y="' + (ry + rh / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" fill="currentColor">' + escapeHtml(n.title) + '</text>');
+      for (var i = 0; i < n.children.length; i++) drawNode(n.children[i], ci);
+    }
+
+    function drawConn(n, ci) {
+      if (n.children.length === 0) return;
+      var busP = n.pP + n.pE + H_GAP;
+      var lineColor = ci < 0 ? "#888" : branchColor(ci).line;
+      if (n.children.length === 1) {
+        var c = n.children[0];
+        var a = pt(n.pP + n.pE, n.sC), b = pt(c.pP, c.sC);
+        svgL.push('<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="' + lineColor + '" stroke-width="1.5"/>');
+      } else {
+        var a = pt(n.pP + n.pE, n.sC), b = pt(busP, n.sC);
+        svgL.push('<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="' + lineColor + '" stroke-width="1.5"/>');
+        var fc = n.children[0], lc = n.children[n.children.length - 1];
+        var t = pt(busP, fc.sC), u = pt(busP, lc.sC);
+        svgL.push('<line x1="' + t[0] + '" y1="' + t[1] + '" x2="' + u[0] + '" y2="' + u[1] + '" stroke="' + lineColor + '" stroke-width="1.5"/>');
+        for (var i = 0; i < n.children.length; i++) {
+          var c1 = pt(busP, n.children[i].sC), c2 = pt(n.children[i].pP, n.children[i].sC);
+          svgL.push('<line x1="' + c1[0] + '" y1="' + c1[1] + '" x2="' + c2[0] + '" y2="' + c2[1] + '" stroke="' + lineColor + '" stroke-width="1.5"/>');
+        }
+      }
+      for (var i = 0; i < n.children.length; i++) drawConn(n.children[i], ci);
+    }
+
+    // Draw root connections
+    var busP = lr.pP + lr.pE + H_GAP;
+    if (lr.children.length === 1) {
+      var c = lr.children[0];
+      var a = pt(lr.pP + lr.pE, lr.sC), b = pt(c.pP, c.sC);
+      svgL.push('<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="#888" stroke-width="1.5"/>');
+    } else if (lr.children.length >= 2) {
+      var a = pt(lr.pP + lr.pE, lr.sC), b = pt(busP, lr.sC);
+      svgL.push('<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="#888" stroke-width="1.5"/>');
+      var fc = lr.children[0], lc = lr.children[lr.children.length - 1];
+      var t = pt(busP, fc.sC), u = pt(busP, lc.sC);
+      svgL.push('<line x1="' + t[0] + '" y1="' + t[1] + '" x2="' + u[0] + '" y2="' + u[1] + '" stroke="#888" stroke-width="1.5"/>');
+      for (var i = 0; i < lr.children.length; i++) {
+        var c1 = pt(busP, lr.children[i].sC), c2 = pt(lr.children[i].pP, lr.children[i].sC);
+        svgL.push('<line x1="' + c1[0] + '" y1="' + c1[1] + '" x2="' + c2[0] + '" y2="' + c2[1] + '" stroke="' + branchColor(i).line + '" stroke-width="1.5"/>');
+      }
+    }
+    // Draw root node
+    (function() {
+      var rx, ry, rw, rh;
+      if (dir === "TD") { rx = lr.sC - lr.sE / 2; ry = lr.pP; rw = lr.sE; rh = lr.pE; }
+      else if (dir === "RL") { rx = -(lr.pP + lr.pE); ry = lr.sC - lr.sE / 2; rw = lr.pE; rh = lr.sE; }
+      else { rx = lr.pP; ry = lr.sC - lr.sE / 2; rw = lr.pE; rh = lr.sE; }
+      svgR.push('<rect x="' + rx + '" y="' + ry + '" width="' + rw + '" height="' + rh + '" rx="' + RX + '" ry="' + RX + '" fill="' + ROOT_STYLE.fill + '" stroke="' + ROOT_STYLE.stroke + '" stroke-width="1.5"/>');
+      svgT.push('<text x="' + (rx + rw / 2) + '" y="' + (ry + rh / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" font-weight="bold" fill="currentColor">' + escapeHtml(lr.title) + '</text>');
+    })();
+    // Draw each branch subtree with its color
+    for (var i = 0; i < lr.children.length; i++) {
+      drawConn(lr.children[i], i);
+      drawNode(lr.children[i], i);
+    }
+
+    var bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    (function calcB(n) {
+      var rx, ry, rw, rh;
+      if (dir === "TD") { rx = n.sC - n.sE / 2; ry = n.pP; rw = n.sE; rh = n.pE; }
+      else if (dir === "RL") { rx = -(n.pP + n.pE); ry = n.sC - n.sE / 2; rw = n.pE; rh = n.sE; }
+      else { rx = n.pP; ry = n.sC - n.sE / 2; rw = n.pE; rh = n.sE; }
+      bx0 = Math.min(bx0, rx); by0 = Math.min(by0, ry);
+      bx1 = Math.max(bx1, rx + rw); by1 = Math.max(by1, ry + rh);
+      for (var i = 0; i < n.children.length; i++) calcB(n.children[i]);
+    })(lr);
+
+    var pad = 10;
+    var w = bx1 - bx0 + pad * 2, h = by1 - by0 + pad * 2;
+    var tx = -bx0 + pad, ty = -by0 + pad;
+
+    return '<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<g transform="translate(' + tx + ',' + ty + ')">' +
+      svgL.join('') + svgR.join('') + svgT.join('') +
+      '</g></svg></div>';
+  }
+
+  function renderFishboneSvg(root, layout) {
+    var FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40, RX = 4;
+    var SPINE_EXTRA = 40, RIB_SPACING = 160;
+    var RIB_ANGLE_DX = 50, RIB_ANGLE_DY = 60;
+    var rightHeaded = layout !== "fishbone-left";
+
+    var ribs = root.children;
+    var spineLen = ribs.length > 0 ? (ribs.length - 1) * RIB_SPACING + SPINE_EXTRA * 2 : 200;
+    var headW = Math.max(MIN_W, estimateTextWidth(root.title, FS) + PAD_X * 2);
+    var headH = FS + PAD_Y * 2;
+
+    var svgL = [], svgR = [], svgT = [];
+    var spineY = 0;
+    var spineLeft, spineRight;
+    if (rightHeaded) { spineRight = spineLen; spineLeft = 0; }
+    else { spineRight = 0; spineLeft = -spineLen; }
+
+    svgL.push('<line x1="' + spineLeft + '" y1="' + spineY + '" x2="' + spineRight + '" y2="' + spineY + '" stroke="#888" stroke-width="2"/>');
+    var arrowEnd = rightHeaded ? spineRight : spineLeft;
+    var arrowDir = rightHeaded ? 1 : -1;
+    svgL.push('<line x1="' + (arrowEnd - arrowDir * 12) + '" y1="' + (spineY - 6) + '" x2="' + arrowEnd + '" y2="' + spineY + '" stroke="#888" stroke-width="2"/>');
+    svgL.push('<line x1="' + (arrowEnd - arrowDir * 12) + '" y1="' + (spineY + 6) + '" x2="' + arrowEnd + '" y2="' + spineY + '" stroke="#888" stroke-width="2"/>');
+
+    var headX = rightHeaded ? spineRight + 5 : spineLeft - headW - 5;
+    svgR.push('<rect x="' + headX + '" y="' + (spineY - headH / 2) + '" width="' + headW + '" height="' + headH + '" rx="' + RX + '" ry="' + RX + '" fill="' + ROOT_STYLE.fill + '" stroke="' + ROOT_STYLE.stroke + '" stroke-width="1.5"/>');
+    svgT.push('<text x="' + (headX + headW / 2) + '" y="' + (spineY + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" font-weight="bold" fill="currentColor">' + escapeHtml(root.title) + '</text>');
+
+    for (var i = 0; i < ribs.length; i++) {
+      var rib = ribs[i];
+      var bc = branchColor(i);
+      var ribBaseX = rightHeaded
+        ? spineLeft + SPINE_EXTRA + i * RIB_SPACING
+        : spineRight - SPINE_EXTRA - i * RIB_SPACING;
+      var above = i % 2 === 0;
+      var dy = above ? -RIB_ANGLE_DY : RIB_ANGLE_DY;
+      var dx = rightHeaded ? RIB_ANGLE_DX : -RIB_ANGLE_DX;
+      var ribEndX = ribBaseX + dx;
+      var ribEndY = spineY + dy;
+
+      svgL.push('<line x1="' + ribBaseX + '" y1="' + spineY + '" x2="' + ribEndX + '" y2="' + ribEndY + '" stroke="' + bc.line + '" stroke-width="1.5"/>');
+
+      var ribW = Math.max(MIN_W, estimateTextWidth(rib.title, FS) + PAD_X * 2);
+      var ribH = FS + PAD_Y * 2;
+      var ribBoxX = ribEndX - ribW / 2;
+      var ribBoxY = above ? ribEndY - ribH : ribEndY;
+      svgR.push('<rect x="' + ribBoxX + '" y="' + ribBoxY + '" width="' + ribW + '" height="' + ribH + '" rx="' + RX + '" ry="' + RX + '" fill="' + bc.fill + '" stroke="' + bc.stroke + '" stroke-width="1"/>');
+      svgT.push('<text x="' + (ribBoxX + ribW / 2) + '" y="' + (ribBoxY + ribH / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" fill="currentColor">' + escapeHtml(rib.title) + '</text>');
+
+      if (rib.children.length > 0) {
+        var subFS = 11;
+        for (var j = 0; j < rib.children.length; j++) {
+          var sub = rib.children[j];
+          var t = (j + 1) / (rib.children.length + 1);
+          var sx = ribBaseX + dx * t;
+          var sy = spineY + dy * t;
+          var subW = Math.max(30, estimateTextWidth(sub.title, subFS) + 8);
+          var subLineLen = subW + 6;
+          var subEndX = sx + (rightHeaded ? -subLineLen : subLineLen);
+          svgL.push('<line x1="' + sx + '" y1="' + sy + '" x2="' + subEndX + '" y2="' + sy + '" stroke="' + bc.line + '" stroke-width="1" opacity="0.6"/>');
+          var textX = rightHeaded ? subEndX - 3 : subEndX + 3;
+          var anchor = rightHeaded ? "end" : "start";
+          svgT.push('<text x="' + textX + '" y="' + (sy + subFS * 0.35) + '" text-anchor="' + anchor + '" font-size="' + subFS + '" fill="' + bc.stroke + '">' + escapeHtml(sub.title) + '</text>');
+        }
+      }
+    }
+
+    var bx0 = spineLeft - 10, bx1 = spineRight + 10;
+    var by0 = -10, by1 = 10;
+    bx0 = Math.min(bx0, headX); bx1 = Math.max(bx1, headX + headW);
+    by0 = Math.min(by0, spineY - headH / 2); by1 = Math.max(by1, spineY + headH / 2);
+    for (var i = 0; i < ribs.length; i++) {
+      var rib = ribs[i];
+      var ribBaseX = rightHeaded ? spineLeft + SPINE_EXTRA + i * RIB_SPACING : spineRight - SPINE_EXTRA - i * RIB_SPACING;
+      var above = i % 2 === 0;
+      var dy = above ? -RIB_ANGLE_DY : RIB_ANGLE_DY;
+      var dx = rightHeaded ? RIB_ANGLE_DX : -RIB_ANGLE_DX;
+      var ribEndX = ribBaseX + dx;
+      var ribEndY = spineY + dy;
+      var ribW = Math.max(MIN_W, estimateTextWidth(rib.title, FS) + PAD_X * 2);
+      var ribH = FS + PAD_Y * 2;
+      var ribBoxX = ribEndX - ribW / 2;
+      var ribBoxY = above ? ribEndY - ribH : ribEndY;
+      bx0 = Math.min(bx0, ribBoxX); bx1 = Math.max(bx1, ribBoxX + ribW);
+      by0 = Math.min(by0, ribBoxY); by1 = Math.max(by1, ribBoxY + ribH);
+      if (rib.children.length > 0) {
+        var subFS = 11;
+        for (var j = 0; j < rib.children.length; j++) {
+          var sub = rib.children[j];
+          var t = (j + 1) / (rib.children.length + 1);
+          var sx = ribBaseX + dx * t;
+          var sy = spineY + dy * t;
+          var subW = Math.max(30, estimateTextWidth(sub.title, subFS) + 8);
+          var subLineLen = subW + 6;
+          var subEndX = sx + (rightHeaded ? -subLineLen : subLineLen);
+          bx0 = Math.min(bx0, Math.min(sx, subEndX) - subW);
+          bx1 = Math.max(bx1, Math.max(sx, subEndX) + subW);
+          by0 = Math.min(by0, sy - subFS); by1 = Math.max(by1, sy + subFS);
+        }
+      }
+    }
+
+    var pad = 15;
+    var w = bx1 - bx0 + pad * 2, h = by1 - by0 + pad * 2;
+    var tx = -bx0 + pad, ty = -by0 + pad;
+
+    return '<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<g transform="translate(' + tx + ',' + ty + ')">' +
+      svgL.join('') + svgR.join('') + svgT.join('') +
+      '</g></svg></div>';
+  }
+
+  function renderTreeDownSvg(root, layout) {
+    var FS = 13, PAD_X = 10, PAD_Y = 5, MIN_W = 40;
+    var V_GAP = 6, TRUNK_GAP = 15, BRANCH_LEN = 25, RX = 4;
+    var side = layout === "tree-down-left" ? "left" : "right";
+
+    function measure(node) {
+      var w = Math.max(MIN_W, estimateTextWidth(node.title, FS) + PAD_X * 2);
+      var h = FS + PAD_Y * 2;
+      var children = [];
+      for (var i = 0; i < node.children.length; i++) children.push(measure(node.children[i]));
+      var subtreeH = h;
+      if (children.length > 0) {
+        var ch = 0;
+        for (var i = 0; i < children.length; i++) ch += children[i].subtreeH;
+        ch += V_GAP * (children.length - 1);
+        subtreeH = h + TRUNK_GAP + ch;
+      }
+      return { title: node.title, children: children, w: w, h: h, subtreeH: subtreeH, x: 0, y: 0 };
+    }
+
+    function position(n, x, y) {
+      n.x = x; n.y = y;
+      if (n.children.length === 0) return;
+      var trunkX = x + n.w / 2;
+      var curY = y + n.h + TRUNK_GAP;
+      for (var i = 0; i < n.children.length; i++) {
+        var c = n.children[i];
+        var cx = side === "right" ? trunkX + BRANCH_LEN : trunkX - BRANCH_LEN - c.w;
+        position(c, cx, curY);
+        curY += c.subtreeH + V_GAP;
+      }
+    }
+
+    var svgL = [], svgR = [], svgT = [];
+
+    function drawNode(n, ci) {
+      var st = ci < 0 ? ROOT_STYLE : branchColor(ci);
+      var fw = ci < 0 ? ' font-weight="bold"' : '';
+      svgR.push('<rect x="' + n.x + '" y="' + n.y + '" width="' + n.w + '" height="' + n.h + '" rx="' + RX + '" ry="' + RX + '" fill="' + st.fill + '" stroke="' + st.stroke + '" stroke-width="1"/>');
+      svgT.push('<text x="' + (n.x + n.w / 2) + '" y="' + (n.y + n.h / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '"' + fw + ' fill="currentColor">' + escapeHtml(n.title) + '</text>');
+      for (var i = 0; i < n.children.length; i++) drawNode(n.children[i], ci);
+    }
+
+    function drawConn(n, ci) {
+      if (n.children.length === 0) return;
+      var trunkX = n.x + n.w / 2;
+      var trunkTop = n.y + n.h;
+      var last = n.children[n.children.length - 1];
+      var trunkBot = last.y + last.h / 2;
+      var lineColor = ci < 0 ? "#888" : branchColor(ci).line;
+      svgL.push('<line x1="' + trunkX + '" y1="' + trunkTop + '" x2="' + trunkX + '" y2="' + trunkBot + '" stroke="' + lineColor + '" stroke-width="1.5"/>');
+      for (var i = 0; i < n.children.length; i++) {
+        var c = n.children[i];
+        var by = c.y + c.h / 2;
+        var bEnd = side === "right" ? c.x : c.x + c.w;
+        svgL.push('<line x1="' + trunkX + '" y1="' + by + '" x2="' + bEnd + '" y2="' + by + '" stroke="' + lineColor + '" stroke-width="1.5"/>');
+      }
+      for (var i = 0; i < n.children.length; i++) drawConn(n.children[i], ci);
+    }
+
+    var tree = measure(root);
+    position(tree, 0, 0);
+    // Draw root trunk connections
+    (function() {
+      var trunkX = tree.x + tree.w / 2;
+      var trunkTop = tree.y + tree.h;
+      if (tree.children.length > 0) {
+        var last = tree.children[tree.children.length - 1];
+        var trunkBot = last.y + last.h / 2;
+        svgL.push('<line x1="' + trunkX + '" y1="' + trunkTop + '" x2="' + trunkX + '" y2="' + trunkBot + '" stroke="#888" stroke-width="1.5"/>');
+        for (var i = 0; i < tree.children.length; i++) {
+          var c = tree.children[i];
+          var by = c.y + c.h / 2;
+          var bEnd = side === "right" ? c.x : c.x + c.w;
+          svgL.push('<line x1="' + trunkX + '" y1="' + by + '" x2="' + bEnd + '" y2="' + by + '" stroke="' + branchColor(i).line + '" stroke-width="1.5"/>');
+        }
+      }
+    })();
+    drawNode(tree, -1);
+    svgR.length = 1; svgT.length = 1;
+    for (var i = 0; i < tree.children.length; i++) {
+      drawConn(tree.children[i], i);
+      drawNode(tree.children[i], i);
+    }
+
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    (function bounds(n) {
+      x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y);
+      x1 = Math.max(x1, n.x + n.w); y1 = Math.max(y1, n.y + n.h);
+      for (var i = 0; i < n.children.length; i++) bounds(n.children[i]);
+    })(tree);
+
+    var pad = 10;
+    var w = x1 - x0 + pad * 2, h = y1 - y0 + pad * 2;
+    var tx = -x0 + pad, ty = -y0 + pad;
+
+    return '<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<g transform="translate(' + tx + ',' + ty + ')">' +
+      svgL.join('') + svgR.join('') + svgT.join('') +
+      '</g></svg></div>';
+  }
+
+  function renderSvgTable(root) {
+    var FS = 13, PAD_X = 8, PAD_Y = 6, MIN_W = 60;
+    var ROW_H = FS + PAD_Y * 2;
+    var rows = root.children;
+    if (rows.length === 0) return '<div class="xmind-tree-svg"><p>' + escapeHtml(root.title) + ': (empty)</p></div>';
+
+    var maxCols = 0;
+    for (var i = 0; i < rows.length; i++) if (rows[i].children.length > maxCols) maxCols = rows[i].children.length;
+
+    var colW = [];
+    var labelW = MIN_W;
+    for (var i = 0; i < rows.length; i++) labelW = Math.max(labelW, estimateTextWidth(rows[i].title, FS) + PAD_X * 2);
+    colW.push(labelW);
+    for (var c = 0; c < maxCols; c++) {
+      var w = MIN_W;
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].children[c]) w = Math.max(w, estimateTextWidth(rows[i].children[c].title, FS) + PAD_X * 2);
+      }
+      colW.push(w);
+    }
+
+    var totalW = 0;
+    for (var i = 0; i < colW.length; i++) totalW += colW[i];
+    var headerH = ROW_H;
+    var totalH = headerH + ROW_H * rows.length;
+    var parts = [];
+
+    parts.push('<rect x="0" y="0" width="' + totalW + '" height="' + headerH + '" fill="rgba(128,128,128,0.15)" stroke="#999" stroke-width="1"/>');
+    parts.push('<text x="' + (totalW / 2) + '" y="' + (headerH / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" font-weight="bold" fill="currentColor">' + escapeHtml(root.title) + '</text>');
+
+    for (var r = 0; r < rows.length; r++) {
+      var y = headerH + r * ROW_H;
+      var x = 0;
+      parts.push('<rect x="' + x + '" y="' + y + '" width="' + colW[0] + '" height="' + ROW_H + '" fill="rgba(128,128,128,0.08)" stroke="#999" stroke-width="1"/>');
+      parts.push('<text x="' + (x + colW[0] / 2) + '" y="' + (y + ROW_H / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" fill="currentColor">' + escapeHtml(rows[r].title) + '</text>');
+      x += colW[0];
+      for (var c = 0; c < maxCols; c++) {
+        var cell = rows[r].children[c];
+        var cellText = cell ? cell.title : "";
+        parts.push('<rect x="' + x + '" y="' + y + '" width="' + colW[c + 1] + '" height="' + ROW_H + '" fill="none" stroke="#999" stroke-width="1"/>');
+        parts.push('<text x="' + (x + colW[c + 1] / 2) + '" y="' + (y + ROW_H / 2 + FS * 0.35) + '" text-anchor="middle" font-size="' + FS + '" fill="currentColor">' + escapeHtml(cellText) + '</text>');
+        x += colW[c + 1];
+      }
+    }
+
+    var pad = 10;
+    var w = totalW + pad * 2, h = totalH + pad * 2;
+
+    return '<div class="xmind-tree-svg"><svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<g transform="translate(' + pad + ',' + pad + ')">' +
+      parts.join('') +
+      '</g></svg></div>';
+  }
+
+  function jsonTopicToTree(t) {
+    var children = (t.children && t.children.attached) || [];
+    return { title: t.title || "", children: children.map(jsonTopicToTree) };
+  }
+
+  function sheetJsonToTree(sheet) {
+    var sc = (sheet.rootTopic && sheet.rootTopic.structureClass) || null;
+    return {
+      title: sheet.title || "Untitled",
+      root: sheet.rootTopic ? jsonTopicToTree(sheet.rootTopic) : null,
+      layout: structureClassToLayout(sc)
+    };
+  }
+
+  function xmlTopicToTree(topic) {
+    var titleEl = topic.querySelector(":scope > title");
+    var title = titleEl ? titleEl.textContent : "";
+    var children = [];
+    var attached = topic.querySelector(":scope > children > topics[type='attached']");
+    if (attached) {
+      attached.querySelectorAll(":scope > topic").forEach(function(child) {
+        children.push(xmlTopicToTree(child));
+      });
+    }
+    return { title: title, children: children };
+  }
+
+  function xmindXmlToMermaid(xmlText) {
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(xmlText, "text/xml");
+    var sheets = doc.querySelectorAll("sheet");
+    var sheetTrees = [];
+    sheets.forEach(function(sheet) {
+      var rootTopic = sheet.querySelector(":scope > topic");
+      var titleEl = sheet.querySelector(":scope > title");
+      var sc = rootTopic ? rootTopic.getAttribute("structure-class") : null;
+      sheetTrees.push({
+        title: titleEl ? titleEl.textContent : "Untitled",
+        root: rootTopic ? xmlTopicToTree(rootTopic) : null,
+        layout: structureClassToLayout(sc)
+      });
+    });
+    return xmindSheetsToMermaid(sheetTrees);
   }
 
   var SOURCE_BASENAME_TO_PRISM = {
@@ -1409,7 +2162,7 @@ main.single-panel .resizer { display: none; }
         '<h1>Markdown Viewer</h1>' +
         '<p class="hint" id="filename-display"></p>' +
         '<div class="controls">' +
-          '<input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,text/markdown,text/plain" hidden />' +
+          '<input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,.xmind,text/markdown,text/plain" hidden />' +
           '<button type="button" id="btn-open-file" class="btn btn--icon" aria-label="Open file" title="Open file">' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
           '</button>' +
@@ -1442,7 +2195,7 @@ main.single-panel .resizer { display: none; }
         '<section class="panel" id="panel-preview">' +
           '<label for="preview-wrap">Preview</label>' +
           '<div id="preview-wrap" tabindex="-1">' +
-            '<div id="usage-watermark">Drag a .md or .puml file or a project folder onto the page, or use Open file</div>' +
+            '<div id="usage-watermark">Drag a .md, .puml, or .xmind file or a project folder onto the page, or use Open file</div>' +
             '<article id="preview"></article>' +
           '</div>' +
         '</section>' +
@@ -1726,7 +2479,7 @@ main.single-panel .resizer { display: none; }
         return;
       }
 
-      if (!isMarkdownDocumentPath(currentFileName)) {
+      if (!isMarkdownDocumentPath(currentFileName) && !isXmindDocumentPath(currentFileName)) {
         var lang = prismLangForSourcePreview(currentFileName, source.value);
         var escaped = escapeHtml(source.value);
         var langClass = lang ? ' class="language-' + lang + '"' : "";
@@ -1773,10 +2526,13 @@ main.single-panel .resizer { display: none; }
         return;
       }
 
-      var preprocessed = preprocessMyST(source.value);
+      var markdownContent = isXmindDocumentPath(currentFileName) && xmindRenderContent != null
+        ? xmindRenderContent
+        : source.value;
+      var preprocessed = preprocessMyST(markdownContent);
       const raw = marked.parse(preprocessed);
       preview.innerHTML = DOMPurify.sanitize(raw, {
-        ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "svg", "path", "rect", "polyline", "span"],
+        ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "svg", "g", "path", "rect", "polyline", "line", "text", "span"],
         ADD_ATTR: [
           "loading",
           "target",
@@ -1799,12 +2555,21 @@ main.single-panel .resizer { display: none; }
           "d",
           "x",
           "y",
+          "x1",
+          "y1",
+          "x2",
+          "y2",
           "width",
           "height",
           "rx",
           "ry",
           "points",
-          "aria-hidden"
+          "aria-hidden",
+          "text-anchor",
+          "font-size",
+          "font-weight",
+          "transform",
+          "opacity"
         ]
       });
 
@@ -2009,7 +2774,13 @@ main.single-panel .resizer { display: none; }
     async function applyFileHandleOpen(h) {
       fileHandle = h;
       var file = await h.getFile();
-      var text = await file.text();
+      var text;
+      if (isXmindDocumentPath(h.name)) {
+        var buf = await file.arrayBuffer();
+        text = await parseXmindToMarkdown(buf);
+      } else {
+        text = await file.text();
+      }
       source.value = text;
       lastSavedContent = text;
       hideWatermark();
@@ -2124,13 +2895,23 @@ main.single-panel .resizer { display: none; }
       workspaceRootHandle = null;
       currentRelPathInWorkspace = null;
       currentFileName = file.webkitRelativePath || file.name || "document.md";
-      file.text().then(function(text) {
-        source.value = text;
-        lastSavedContent = text;
-        hideWatermark();
-        updateFilenameDisplay();
-        scheduleRender();
-      });
+      if (isXmindDocumentPath(currentFileName)) {
+        file.arrayBuffer().then(function(buf) { return parseXmindToMarkdown(buf); }).then(function(text) {
+          source.value = text;
+          lastSavedContent = text;
+          hideWatermark();
+          updateFilenameDisplay();
+          scheduleRender();
+        });
+      } else {
+        file.text().then(function(text) {
+          source.value = text;
+          lastSavedContent = text;
+          hideWatermark();
+          updateFilenameDisplay();
+          scheduleRender();
+        });
+      }
     }
 
     // Use File System Access API if available (Chrome/Edge)
@@ -2146,6 +2927,10 @@ main.single-panel .resizer { display: none; }
               {
                 description: "PlantUML diagrams",
                 accept: { "text/plain": [".puml", ".plantuml"] }
+              },
+              {
+                description: "XMind mind maps",
+                accept: { "application/octet-stream": [".xmind"] }
               }
             ],
             multiple: false
@@ -2159,7 +2944,13 @@ main.single-panel .resizer { display: none; }
           fileHandle = handles[0];
           var file = await fileHandle.getFile();
           currentFileName = file.webkitRelativePath || file.name;
-          var text = await file.text();
+          var text;
+          if (isXmindDocumentPath(currentFileName)) {
+            var buf = await file.arrayBuffer();
+            text = await parseXmindToMarkdown(buf);
+          } else {
+            text = await file.text();
+          }
           source.value = text;
           lastSavedContent = text;
           hideWatermark();
@@ -2186,7 +2977,13 @@ main.single-panel .resizer { display: none; }
       try {
         var file = await fileHandle.getFile();
         currentFileName = file.webkitRelativePath || file.name;
-        var text = await file.text();
+        var text;
+        if (isXmindDocumentPath(currentFileName)) {
+          var buf = await file.arrayBuffer();
+          text = await parseXmindToMarkdown(buf);
+        } else {
+          text = await file.text();
+        }
         source.value = text;
         lastSavedContent = text;
         hideWatermark();
@@ -2328,7 +3125,13 @@ main.single-panel .resizer { display: none; }
             fileHandle = handle;
             var file = await fileHandle.getFile();
             currentFileName = file.webkitRelativePath || file.name;
-            var text = await file.text();
+            var text;
+            if (isXmindDocumentPath(currentFileName)) {
+              var buf = await file.arrayBuffer();
+              text = await parseXmindToMarkdown(buf);
+            } else {
+              text = await file.text();
+            }
             source.value = text;
             lastSavedContent = text;
             hideWatermark();
