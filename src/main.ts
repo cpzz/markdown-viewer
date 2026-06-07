@@ -91,9 +91,11 @@ function processEscapeSequences(s: string): string {
 /** Fenced code (non-diagram): icon copy of rendered / highlighted text (`textContent`). */
 const CODE_BLOCK_CLIPBOARD_ICON = `<span class="code-block__copy-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>`;
 const CODE_BLOCK_CHECK_ICON = `<span class="code-block__copy-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`;
+const CODE_BLOCK_FORMAT_ICON = `<span class="code-block__format-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg></span>`;
+const CODE_BLOCK_FORMAT_DONE_ICON = `<span class="code-block__format-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`;
 
 function codeBlockWithCopyButton(langClass: string, escapedBody: string): string {
-  return `<div class="code-block-wrap"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">${CODE_BLOCK_CLIPBOARD_ICON}${CODE_BLOCK_CHECK_ICON}</button><pre><code${langClass}>${escapedBody}</code></pre></div>`;
+  return `<div class="code-block-wrap"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">${CODE_BLOCK_CLIPBOARD_ICON}${CODE_BLOCK_CHECK_ICON}</button><button type="button" class="code-block__format btn btn--icon" aria-label="Format code" title="Format code">${CODE_BLOCK_FORMAT_ICON}${CODE_BLOCK_FORMAT_DONE_ICON}</button><pre><code${langClass}>${escapedBody}</code></pre></div>`;
 }
 
 /** File path / name → basename (handles `/` and `\\`). */
@@ -1247,6 +1249,194 @@ const PRISM_LOADED_LANG = new Set([
   "groovy",
 ]);
 
+// ── Minified code detection & chunk-based highlighting ──
+
+/** Max line length before we consider code as "minified/compressed" */
+const MINIFIED_LINE_THRESHOLD = 5000;
+
+/** Check if source code is likely minified (has very long lines) */
+function isMinifiedCode(source: string): boolean {
+  const lines = source.split(/\r?\n/);
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    if (lines[i].length > MINIFIED_LINE_THRESHOLD) return true;
+  }
+  return false;
+}
+
+/** Try to format code using js-beautify (loaded via CDN) based on language */
+function tryFormatCode(code: string, lang: string): string | null {
+  // js-beautify is loaded as global in index.html
+  const win = window as unknown as Record<string, unknown>;
+  const jsBeautify = win.js_beautify as ((code: string, opts: Record<string, unknown>) => string) | undefined;
+  const cssBeautify = win.css_beautify as ((code: string, opts: Record<string, unknown>) => string) | undefined;
+
+  if (!jsBeautify && !cssBeautify) return null;
+
+  const opts: Record<string, unknown> = { indent_size: 2, space_in_empty_paren: true };
+  try {
+    if (lang === "javascript" || lang === "typescript" || lang === "jsx" || lang === "tsx") {
+      if (jsBeautify) return jsBeautify(code, opts);
+    }
+    if (lang === "css") {
+      if (cssBeautify) return cssBeautify(code, opts);
+    }
+    if (lang === "json") {
+      const parsed = JSON.parse(code);
+      return JSON.stringify(parsed, null, 2);
+    }
+  } catch {
+    // Formatting failed
+  }
+  return null;
+}
+
+/** Highlight code with Prism, returns HTML string */
+function highlightWithPrism(code: string, lang: string): string {
+  if (typeof Prism === "undefined" || !Prism.languages[lang]) {
+    return escapeHtml(code);
+  }
+  try {
+    return Prism.highlight(code, Prism.languages[lang], lang);
+  } catch {
+    return escapeHtml(code);
+  }
+}
+
+interface CodeChunk {
+  text: string;
+  isCode: boolean;
+}
+
+/** Split code into chunks at natural boundaries to avoid long lines */
+function splitCodeIntoChunks(code: string): CodeChunk[] {
+  const chunks: CodeChunk[] = [];
+  let current = "";
+  let i = 0;
+  const maxChunkLen = 2000;
+
+  while (i < code.length) {
+    const c = code[i];
+
+    // Track string literals to avoid splitting inside them
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      current += c;
+      i++;
+      while (i < code.length) {
+        if (code[i] === "\\") {
+          current += code[i] + (code[i + 1] || "");
+          i += 2;
+          continue;
+        }
+        current += code[i];
+        if (code[i] === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    // Track line comments
+    if (c === "/" && code[i + 1] === "/") {
+      if (current.length > maxChunkLen) {
+        chunks.push({ text: current, isCode: true });
+        current = "";
+      }
+      while (i < code.length && code[i] !== "\n") {
+        current += code[i];
+        i++;
+      }
+      chunks.push({ text: current, isCode: true });
+      current = "";
+      continue;
+    }
+
+    // Track block comments
+    if (c === "/" && code[i + 1] === "*") {
+      if (current.length > maxChunkLen) {
+        chunks.push({ text: current, isCode: true });
+        current = "";
+      }
+      current += "/*";
+      i += 2;
+      while (i < code.length && !(code[i] === "*" && code[i + 1] === "/")) {
+        current += code[i];
+        i++;
+      }
+      if (i < code.length) {
+        current += "*/";
+        i += 2;
+      }
+      chunks.push({ text: current, isCode: true });
+      current = "";
+      continue;
+    }
+
+    // Natural split points: semicolons, braces, newlines
+    if (c === ";" || c === "{" || c === "}" || c === "\n") {
+      current += c;
+      if (current.length > 100 || current.length > maxChunkLen) {
+        chunks.push({ text: current, isCode: true });
+        current = "";
+      }
+      i++;
+      continue;
+    }
+
+    current += c;
+    i++;
+
+    // Force chunk break if too long
+    if (current.length > maxChunkLen) {
+      chunks.push({ text: current, isCode: true });
+      current = "";
+    }
+  }
+
+  if (current.length > 0) {
+    chunks.push({ text: current, isCode: true });
+  }
+
+  return chunks;
+}
+
+/** Chunk-based highlighting: split code at natural boundaries, highlight each chunk */
+function highlightByChunks(code: string, lang: string): string {
+  const chunks = splitCodeIntoChunks(code);
+  let result = "";
+  for (const chunk of chunks) {
+    result += chunk.isCode ? highlightWithPrism(chunk.text, lang) : escapeHtml(chunk.text);
+  }
+  return result;
+}
+
+/**
+ * Main entry for minified code highlighting.
+ * Tries to format first, then highlights the formatted code.
+ * Falls back to chunk-based highlighting if formatting fails.
+ */
+function highlightMinifiedCode(code: string, lang: string): string {
+  const formatted = tryFormatCode(code, lang);
+  if (formatted !== null) {
+    return highlightWithPrism(formatted, lang);
+  }
+  return highlightByChunks(code, lang);
+}
+
+/** Map shorthand language names to Prism language keys */
+const LANG_SHORTHAND_MAP: Record<string, string> = {
+  js: "javascript",
+  ts: "typescript",
+  py: "python",
+  yml: "yaml",
+};
+
+function resolvePrismLang(lang: string): string {
+  return LANG_SHORTHAND_MAP[lang] || lang;
+}
+
 /** First non-empty line after optional UTF-8 BOM (for shebang when suffix is missing or not mapped). */
 function firstNonEmptySourceLine(source: string): string {
   let s = source;
@@ -2089,47 +2279,89 @@ function mount(): void {
       if (ext === "json" || ext === "yaml" || ext === "yml") {
         displayContent = processEscapeSequences(displayContent);
       }
-      const escaped = escapeHtml(displayContent);
       const langClass = lang ? ` class="language-${lang}"` : "";
-      preview.innerHTML = DOMPurify.sanitize(
-        `<article class="preview-non-markdown">${codeBlockWithCopyButton(langClass, escaped)}</article>`,
-        {
-          ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span"],
-          ADD_ATTR: [
-            "loading",
-            "target",
-            "rel",
-            "id",
-            "role",
-            "aria-selected",
-            "data-tab",
-            "data-tabset",
-            "class",
-            "title",
-            "type",
-            "viewBox",
-            "xmlns",
-            "fill",
-            "stroke",
-            "stroke-width",
-            "stroke-linecap",
-            "stroke-linejoin",
-            "d",
-            "x",
-            "y",
-            "width",
-            "height",
-            "rx",
-            "ry",
-            "points",
-            "aria-hidden",
-          ],
-        },
-      );
-      if (typeof Prism !== "undefined") {
-        preview.querySelectorAll("pre code").forEach((block) => {
-          Prism.highlightElement(block);
-        });
+
+      // Check if code is minified (has very long lines)
+      if (lang && isMinifiedCode(displayContent)) {
+        // Use chunk-based highlighting for minified code to avoid Prism backtracking
+        const highlighted = highlightMinifiedCode(displayContent, lang);
+        preview.innerHTML = DOMPurify.sanitize(
+          `<article class="preview-non-markdown">${codeBlockWithCopyButton(langClass, highlighted)}</article>`,
+          {
+            ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span"],
+            ADD_ATTR: [
+              "loading",
+              "target",
+              "rel",
+              "id",
+              "role",
+              "aria-selected",
+              "data-tab",
+              "data-tabset",
+              "class",
+              "title",
+              "type",
+              "viewBox",
+              "xmlns",
+              "fill",
+              "stroke",
+              "stroke-width",
+              "stroke-linecap",
+              "stroke-linejoin",
+              "d",
+              "x",
+              "y",
+              "width",
+              "height",
+              "rx",
+              "ry",
+              "points",
+              "aria-hidden",
+            ],
+          },
+        );
+      } else {
+        const escaped = escapeHtml(displayContent);
+        preview.innerHTML = DOMPurify.sanitize(
+          `<article class="preview-non-markdown">${codeBlockWithCopyButton(langClass, escaped)}</article>`,
+          {
+            ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span"],
+            ADD_ATTR: [
+              "loading",
+              "target",
+              "rel",
+              "id",
+              "role",
+              "aria-selected",
+              "data-tab",
+              "data-tabset",
+              "class",
+              "title",
+              "type",
+              "viewBox",
+              "xmlns",
+              "fill",
+              "stroke",
+              "stroke-width",
+              "stroke-linecap",
+              "stroke-linejoin",
+              "d",
+              "x",
+              "y",
+              "width",
+              "height",
+              "rx",
+              "ry",
+              "points",
+              "aria-hidden",
+            ],
+          },
+        );
+        if (typeof Prism !== "undefined") {
+          preview.querySelectorAll("pre code").forEach((block) => {
+            Prism.highlightElement(block);
+          });
+        }
       }
       return;
     }
@@ -2184,7 +2416,17 @@ function mount(): void {
     // Apply Prism syntax highlighting
     if (typeof Prism !== "undefined") {
       preview.querySelectorAll("pre code").forEach((block) => {
-        Prism.highlightElement(block);
+        const text = block.textContent || "";
+        const langClass = block.className || "";
+        const langMatch = langClass.match(/language-(\w+)/);
+        if (langMatch && isMinifiedCode(text)) {
+          // Use chunk-based highlighting for minified code
+          const prismLang = resolvePrismLang(langMatch[1]);
+          const highlighted = highlightMinifiedCode(text, prismLang);
+          block.innerHTML = highlighted;
+        } else {
+          Prism.highlightElement(block);
+        }
       });
     }
 
@@ -2458,6 +2700,36 @@ function mount(): void {
             alert("Could not copy to clipboard.");
           },
         );
+        return;
+      }
+
+      const formatBtn = (e.target as HTMLElement | null)?.closest?.(".code-block__format");
+      if (formatBtn && preview.contains(formatBtn)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = formatBtn.closest(".code-block-wrap");
+        const codeEl = wrap?.querySelector("pre code");
+        if (!codeEl) return;
+        const text = codeEl.textContent ?? "";
+        const langClass = codeEl.className || "";
+        const langMatch = langClass.match(/language-(\w+)/);
+        const lang = langMatch ? resolvePrismLang(langMatch[1]) : "";
+
+        const formatted = tryFormatCode(text, lang);
+        if (formatted === null) {
+          alert("Could not format this code. Language may not be supported.");
+          return;
+        }
+
+        // Re-highlight the formatted code
+        const highlighted = highlightWithPrism(formatted, lang);
+        codeEl.innerHTML = highlighted;
+        formatBtn.setAttribute("data-formatted", "");
+        formatBtn.setAttribute("aria-label", "Formatted");
+        window.setTimeout(() => {
+          formatBtn.removeAttribute("data-formatted");
+          formatBtn.setAttribute("aria-label", "Format code");
+        }, 2000);
         return;
       }
 

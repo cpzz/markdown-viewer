@@ -335,6 +335,13 @@ main.single-panel .resizer { display: none; }
 .code-block-wrap .code-block__copy.btn--icon {
   position: absolute;
   top: 0.35rem;
+  right: 3.5rem;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.code-block-wrap .code-block__format.btn--icon {
+  position: absolute;
+  top: 0.35rem;
   right: 0.35rem;
   z-index: 2;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -350,6 +357,15 @@ main.single-panel .resizer { display: none; }
 }
 .code-block__copy[data-copied] {
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+.code-block__format .code-block__format-done {
+  display: none;
+}
+.code-block__format[data-formatted] .code-block__format-icon {
+  display: none;
+}
+.code-block__format[data-formatted] .code-block__format-done {
+  display: block;
 }
 #preview pre {
   overflow: auto;
@@ -692,6 +708,8 @@ main.single-panel .resizer { display: none; }
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-clike.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-groovy.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-toml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-beautify@1.14.11/js/lib/beautify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-beautify@1.14.11/js/lib/beautify-css.min.js"></script>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
     window.__mermaid = mermaid;
@@ -743,12 +761,19 @@ main.single-panel .resizer { display: none; }
     '<span class="code-block__copy-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>';
   var CODE_BLOCK_CHECK_ICON =
     '<span class="code-block__copy-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>';
+  var CODE_BLOCK_FORMAT_ICON =
+    '<span class="code-block__format-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg></span>';
+  var CODE_BLOCK_FORMAT_DONE_ICON =
+    '<span class="code-block__format-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>';
 
   function codeBlockWithCopyButton(langClass, escapedBody) {
     return (
       '<div class="code-block-wrap"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">' +
       CODE_BLOCK_CLIPBOARD_ICON +
       CODE_BLOCK_CHECK_ICON +
+      '</button><button type="button" class="code-block__format btn btn--icon" aria-label="Format code" title="Format code">' +
+      CODE_BLOCK_FORMAT_ICON +
+      CODE_BLOCK_FORMAT_DONE_ICON +
       "</button><pre><code" +
       langClass +
       ">" +
@@ -1569,6 +1594,195 @@ main.single-panel .resizer { display: none; }
     java: 1, c: 1, cpp: 1, csharp: 1, go: 1, rust: 1, sql: 1, bash: 1, powershell: 1,
     markdown: 1, docker: 1, nginx: 1, toml: 1, makefile: 1, cmake: 1, groovy: 1
   };
+
+  // Max line length before we consider code as "minified/compressed"
+  var MINIFIED_LINE_THRESHOLD = 5000;
+
+  /**
+   * Check if source code is likely minified (has very long lines)
+   */
+  function isMinifiedCode(source) {
+    var lines = source.split(/\r?\n/);
+    for (var i = 0; i < Math.min(lines.length, 20); i++) {
+      if (lines[i].length > MINIFIED_LINE_THRESHOLD) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Split minified code into chunks for safe Prism highlighting.
+   * Breaks long lines at semicolons, braces, etc. to avoid catastrophic backtracking.
+   */
+  function highlightMinifiedCode(code, lang) {
+    // Try to format first, then highlight the formatted code
+    var formatted = tryFormatCode(code, lang);
+    if (formatted !== null) {
+      // Highlight formatted code with Prism (now safe since lines are short)
+      return highlightWithPrism(formatted, lang);
+    }
+    // If formatting fails, do chunk-based highlighting
+    return highlightByChunks(code, lang);
+  }
+
+  /**
+   * Try to format code using js-beautify based on language
+   */
+  function tryFormatCode(code, lang) {
+    if (typeof js_beautify === "undefined") return null;
+    try {
+      var opts = { indent_size: 2, space_in_empty_paren: true };
+      if (lang === "javascript" || lang === "typescript" || lang === "jsx" || lang === "tsx") {
+        return js_beautify(code, opts);
+      }
+      if (lang === "css") {
+        if (typeof css_beautify !== "undefined") {
+          return css_beautify(code, opts);
+        }
+      }
+      if (lang === "json") {
+        // JSON: parse and stringify
+        var parsed = JSON.parse(code);
+        return JSON.stringify(parsed, null, 2);
+      }
+    } catch (e) {
+      // Formatting failed, return null
+    }
+    return null;
+  }
+
+  /**
+   * Highlight code with Prism, processing line by line to avoid backtracking
+   */
+  function highlightWithPrism(code, lang) {
+    if (typeof Prism === "undefined" || !Prism.languages[lang]) {
+      return escapeHtml(code);
+    }
+    try {
+      // Use Prism.highlight which returns HTML string
+      return Prism.highlight(code, Prism.languages[lang], lang);
+    } catch (e) {
+      // If Prism fails, fall back to plain escaped code
+      return escapeHtml(code);
+    }
+  }
+
+  /**
+   * Chunk-based highlighting: split code at natural boundaries, highlight each chunk
+   */
+  function highlightByChunks(code, lang) {
+    // Split at statement boundaries: semicolons, braces, newlines
+    var chunks = splitCodeIntoChunks(code);
+    var result = "";
+    for (var i = 0; i < chunks.length; i++) {
+      var chunk = chunks[i];
+      if (chunk.isCode) {
+        result += highlightWithPrism(chunk.text, lang);
+      } else {
+        result += escapeHtml(chunk.text);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Split code into chunks at natural boundaries to avoid long lines
+   */
+  function splitCodeIntoChunks(code) {
+    var chunks = [];
+    var current = "";
+    var i = 0;
+    var maxChunkLen = 2000; // Max chars per chunk for Prism
+
+    while (i < code.length) {
+      var c = code[i];
+
+      // Track string literals to avoid splitting inside them
+      if (c === '"' || c === "'" || c === "`") {
+        var quote = c;
+        current += c;
+        i++;
+        while (i < code.length) {
+          if (code[i] === "\\") {
+            current += code[i] + (code[i + 1] || "");
+            i += 2;
+            continue;
+          }
+          current += code[i];
+          if (code[i] === quote) {
+            i++;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+
+      // Track comments
+      if (c === "/" && code[i + 1] === "/") {
+        // Flush current chunk if too long
+        if (current.length > maxChunkLen) {
+          chunks.push({ text: current, isCode: true });
+          current = "";
+        }
+        // Read entire line comment
+        while (i < code.length && code[i] !== "\n") {
+          current += code[i];
+          i++;
+        }
+        chunks.push({ text: current, isCode: true });
+        current = "";
+        continue;
+      }
+
+      if (c === "/" && code[i + 1] === "*") {
+        // Flush current chunk
+        if (current.length > maxChunkLen) {
+          chunks.push({ text: current, isCode: true });
+          current = "";
+        }
+        // Read entire block comment
+        current += "/*";
+        i += 2;
+        while (i < code.length && !(code[i] === "*" && code[i + 1] === "/")) {
+          current += code[i];
+          i++;
+        }
+        if (i < code.length) {
+          current += "*/";
+          i += 2;
+        }
+        chunks.push({ text: current, isCode: true });
+        current = "";
+        continue;
+      }
+
+      // Natural split points: semicolons, braces, newlines
+      if (c === ";" || c === "{" || c === "}" || c === "\n") {
+        current += c;
+        if (current.length > 100 || current.length > maxChunkLen) {
+          chunks.push({ text: current, isCode: true });
+          current = "";
+        }
+        i++;
+        continue;
+      }
+
+      current += c;
+      i++;
+
+      // Force chunk break if too long
+      if (current.length > maxChunkLen) {
+        chunks.push({ text: current, isCode: true });
+        current = "";
+      }
+    }
+
+    if (current.length > 0) {
+      chunks.push({ text: current, isCode: true });
+    }
+
+    return chunks;
+  }
 
   function firstNonEmptySourceLine(source) {
     var s = source;
@@ -2501,47 +2715,89 @@ main.single-panel .resizer { display: none; }
         if (ext === "json" || ext === "yaml" || ext === "yml") {
           displayContent = processEscapeSequences(displayContent);
         }
-        var escaped = escapeHtml(displayContent);
         var langClass = lang ? ' class="language-' + lang + '"' : "";
-        preview.innerHTML = DOMPurify.sanitize(
-          '<article class="preview-non-markdown">' + codeBlockWithCopyButton(langClass, escaped) + "</article>",
-          {
-            ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span"],
-            ADD_ATTR: [
-              "loading",
-              "target",
-              "rel",
-              "id",
-              "role",
-              "aria-selected",
-              "data-tab",
-              "data-tabset",
-              "class",
-              "title",
-              "type",
-              "viewBox",
-              "xmlns",
-              "fill",
-              "stroke",
-              "stroke-width",
-              "stroke-linecap",
-              "stroke-linejoin",
-              "d",
-              "x",
-              "y",
-              "width",
-              "height",
-              "rx",
-              "ry",
-              "points",
-              "aria-hidden"
-            ]
+
+        // Check if code is minified (has very long lines)
+        if (lang && isMinifiedCode(displayContent)) {
+          // Use chunk-based highlighting for minified code to avoid Prism backtracking
+          var highlighted = highlightMinifiedCode(displayContent, lang);
+          preview.innerHTML = DOMPurify.sanitize(
+            '<article class="preview-non-markdown">' + codeBlockWithCopyButton(langClass, highlighted) + "</article>",
+            {
+              ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span", "span"],
+              ADD_ATTR: [
+                "loading",
+                "target",
+                "rel",
+                "id",
+                "role",
+                "aria-selected",
+                "data-tab",
+                "data-tabset",
+                "class",
+                "title",
+                "type",
+                "viewBox",
+                "xmlns",
+                "fill",
+                "stroke",
+                "stroke-width",
+                "stroke-linecap",
+                "stroke-linejoin",
+                "d",
+                "x",
+                "y",
+                "width",
+                "height",
+                "rx",
+                "ry",
+                "points",
+                "aria-hidden"
+              ]
+            }
+          );
+        } else {
+          var escaped = escapeHtml(displayContent);
+          preview.innerHTML = DOMPurify.sanitize(
+            '<article class="preview-non-markdown">' + codeBlockWithCopyButton(langClass, escaped) + "</article>",
+            {
+              ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code", "svg", "path", "rect", "polyline", "span"],
+              ADD_ATTR: [
+                "loading",
+                "target",
+                "rel",
+                "id",
+                "role",
+                "aria-selected",
+                "data-tab",
+                "data-tabset",
+                "class",
+                "title",
+                "type",
+                "viewBox",
+                "xmlns",
+                "fill",
+                "stroke",
+                "stroke-width",
+                "stroke-linecap",
+                "stroke-linejoin",
+                "d",
+                "x",
+                "y",
+                "width",
+                "height",
+                "rx",
+                "ry",
+                "points",
+                "aria-hidden"
+              ]
+            }
+          );
+          if (typeof Prism !== "undefined") {
+            preview.querySelectorAll("pre code").forEach(function(block) {
+              Prism.highlightElement(block);
+            });
           }
-        );
-        if (typeof Prism !== "undefined") {
-          preview.querySelectorAll("pre code").forEach(function(block) {
-            Prism.highlightElement(block);
-          });
         }
         return;
       }
@@ -2596,7 +2852,19 @@ main.single-panel .resizer { display: none; }
       // Apply Prism syntax highlighting
       if (typeof Prism !== "undefined") {
         preview.querySelectorAll("pre code").forEach(function(block) {
-          Prism.highlightElement(block);
+          var text = block.textContent || "";
+          var langClass = block.className || "";
+          var langMatch = langClass.match(/language-(\w+)/);
+          if (langMatch && isMinifiedCode(text)) {
+            // Use chunk-based highlighting for minified code
+            var prismLang = langMatch[1];
+            var langMap = { js: "javascript", ts: "typescript", py: "python", yml: "yaml" };
+            prismLang = langMap[prismLang] || prismLang;
+            var highlighted = highlightMinifiedCode(text, prismLang);
+            block.innerHTML = highlighted;
+          } else {
+            Prism.highlightElement(block);
+          }
         });
       }
 
@@ -2873,6 +3141,39 @@ main.single-panel .resizer { display: none; }
               alert("Could not copy to clipboard.");
             }
           );
+          return;
+        }
+        var formatBtn = t.closest(".code-block__format");
+        if (formatBtn && preview.contains(formatBtn)) {
+          e.preventDefault();
+          e.stopPropagation();
+          var wrap = formatBtn.closest(".code-block-wrap");
+          var codeEl = wrap && wrap.querySelector("pre code");
+          if (!codeEl) return;
+          var text = codeEl.textContent || "";
+          var langClass = codeEl.className || "";
+          var lang = "";
+          var langMatch = langClass.match(/language-(\w+)/);
+          if (langMatch) lang = langMatch[1];
+          // Map language names to Prism language keys
+          var langMap = { js: "javascript", ts: "typescript", py: "python", yml: "yaml" };
+          var prismLang = langMap[lang] || lang;
+
+          var formatted = tryFormatCode(text, prismLang);
+          if (formatted === null) {
+            alert("Could not format this code. Language may not be supported.");
+            return;
+          }
+
+          // Re-highlight the formatted code
+          var highlighted = highlightWithPrism(formatted, prismLang);
+          codeEl.innerHTML = highlighted;
+          formatBtn.setAttribute("data-formatted", "");
+          formatBtn.setAttribute("aria-label", "Formatted");
+          setTimeout(function() {
+            formatBtn.removeAttribute("data-formatted");
+            formatBtn.setAttribute("aria-label", "Format code");
+          }, 2000);
           return;
         }
         var el = t.closest("a[href]");
