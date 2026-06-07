@@ -1179,6 +1179,8 @@ const SOURCE_EXT_TO_PRISM: Record<string, string> = {
   mjs: "javascript",
   cjs: "javascript",
   ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
   tsx: "tsx",
   jsx: "jsx",
   css: "css",
