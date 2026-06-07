@@ -1751,6 +1751,9 @@ function mount(): void {
         <button type="button" id="btn-reopen-file" class="btn btn--icon" aria-label="Reopen file" title="Reopen file" disabled>
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
         </button>
+        <button type="button" id="btn-format-file" class="btn btn--icon" aria-label="Format file" title="Format file">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
+        </button>
         <button type="button" id="btn-save-file" class="btn btn--icon" aria-label="Save file" title="Save file">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         </button>
@@ -1833,6 +1836,7 @@ function mount(): void {
   const btnOpenFile = document.querySelector<HTMLButtonElement>("#btn-open-file")!;
   const btnReopenFile = document.querySelector<HTMLButtonElement>("#btn-reopen-file")!;
   const btnSaveFile = document.querySelector<HTMLButtonElement>("#btn-save-file")!;
+  const btnFormatFile = document.querySelector<HTMLButtonElement>("#btn-format-file")!;
   const btnToggleSource = document.querySelector<HTMLButtonElement>("#btn-toggle-source")!;
   const btnTogglePreview = document.querySelector<HTMLButtonElement>("#btn-toggle-preview")!;
   const filenameDisplay = document.querySelector<HTMLElement>("#filename-display")!;
@@ -2583,6 +2587,90 @@ function mount(): void {
     }
   }
 
+  /** Format content based on file type. */
+  function formatFile(): void {
+    const ext = pathFileExtension(currentFileName);
+    let formatted = source.value;
+
+    switch (ext) {
+      case "json":
+        try {
+          formatted = JSON.stringify(JSON.parse(source.value), null, 2);
+        } catch {
+          alert("Invalid JSON — cannot format.");
+          return;
+        }
+        break;
+
+      case "yaml":
+      case "yml":
+        // Normalize: trim trailing whitespace, ensure final newline
+        formatted = source.value
+          .split("\n")
+          .map((l) => l.trimEnd())
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n");
+        break;
+
+      case "toml":
+        // Normalize: trim trailing whitespace, ensure final newline
+        formatted = source.value
+          .split("\n")
+          .map((l) => l.trimEnd())
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n");
+        break;
+
+      case "xml":
+      case "svg":
+      case "html":
+      case "htm":
+        formatted = prettyPrintXml(source.value);
+        break;
+
+      case "md":
+      case "markdown":
+      case "mdx":
+      case "mdown":
+      case "mkd":
+      case "qmd":
+      case "rmd":
+      case "mdc":
+        // Normalize markdown: trim trailing whitespace, collapse excessive blank lines
+        formatted = source.value
+          .split("\n")
+          .map((l) => l.trimEnd())
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n");
+        break;
+
+      case "puml":
+      case "plantuml":
+        // Normalize PlantUML: ensure @startuml/@enduml, trim
+        const trimmed = source.value.trim();
+        if (!trimmed.includes("@startuml")) {
+          formatted = `@startuml\n${trimmed}\n@enduml`;
+        } else {
+          formatted = trimmed;
+        }
+        break;
+
+      default:
+        // Generic: trim trailing whitespace per line, collapse excessive blank lines
+        formatted = source.value
+          .split("\n")
+          .map((l) => l.trimEnd())
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n");
+        break;
+    }
+
+    if (formatted !== source.value) {
+      source.value = formatted;
+      scheduleRender();
+    }
+  }
+
   async function saveFile(): Promise<void> {
     const content = source.value;
 
@@ -2648,6 +2736,7 @@ function mount(): void {
 
   btnOpenFile.addEventListener("click", () => void openFileWithPicker());
   btnReopenFile.addEventListener("click", () => void reopenFile());
+  btnFormatFile.addEventListener("click", () => formatFile());
   btnSaveFile.addEventListener("click", () => void saveFile());
   fileOpenInput.addEventListener("change", () => {
     const file = fileOpenInput.files?.[0];
