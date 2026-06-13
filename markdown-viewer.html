@@ -2640,7 +2640,10 @@ main.single-panel .resizer { display: none; }
       }
     }
 
-    source.value = DEFAULT_MD;
+    // Only set default if textarea is empty (browser may restore content on tab copy)
+    if (!source.value) {
+      source.value = DEFAULT_MD;
+    }
     updateFilenameDisplay();
     preview.classList.add("fit-width");
 
@@ -3022,6 +3025,9 @@ main.single-panel .resizer { display: none; }
 
     source.addEventListener("input", scheduleRender);
     source.addEventListener("change", scheduleRender);
+
+    // Initial render (handles tab copy where browser restores textarea but not preview)
+    scheduleRender();
 
     // Handle browser back/forward navigation (bfcache restore)
     window.addEventListener("pageshow", function(event) {

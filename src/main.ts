@@ -2402,7 +2402,10 @@ function mount(): void {
     }
   }
 
-  source.value = DEFAULT_MD;
+  // Only set default if textarea is empty (browser may restore content on tab copy)
+  if (!source.value) {
+    source.value = DEFAULT_MD;
+  }
   updateFilenameDisplay();
   preview.classList.add("fit-width");
   plantumlOutputFormat = "svg";
@@ -2783,6 +2786,10 @@ function mount(): void {
   }
 
   source.addEventListener("input", scheduleRender);
+  source.addEventListener("change", scheduleRender);
+
+  // Initial render (handles tab copy where browser restores textarea but not preview)
+  scheduleRender();
   formatSelect.addEventListener("change", () => {
     plantumlOutputFormat = formatSelect.value === "png" ? "png" : "svg";
     scheduleRender();
