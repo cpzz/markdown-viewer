@@ -1976,6 +1976,40 @@ function mount(): void {
     </header>
     <main>
       <section class="panel" id="panel-source">
+        <div class="find-replace-bar" id="find-replace-bar">
+          <div class="find-replace-row">
+            <input type="text" id="find-input" placeholder="Find" aria-label="Find" />
+            <div class="fr-controls" id="fr-controls-find">
+              <span class="find-replace-info" id="find-info"></span>
+              <button type="button" id="btn-find-prev" class="btn-fr" title="Previous (Shift+Enter)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+              </button>
+              <button type="button" id="btn-find-next" class="btn-fr" title="Next (Enter)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <label title="Case sensitive"><input type="checkbox" id="find-case" /> Aa</label>
+              <label title="Regex"><input type="checkbox" id="find-regex" /> .*</label>
+              <button type="button" id="btn-find-toggle-replace" class="btn-fr" title="Toggle replace">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              </button>
+              <button type="button" class="btn-fr btn-close" id="btn-find-close" title="Close (Esc)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="find-replace-row" id="replace-row" style="display:none;">
+            <input type="text" id="replace-input" placeholder="Replace" aria-label="Replace" />
+            <div class="fr-controls" id="fr-controls-replace">
+              <span class="find-replace-info"></span>
+              <button type="button" id="btn-replace-one" class="btn-fr" title="Replace">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
+              </button>
+              <button type="button" id="btn-replace-all" class="btn-fr" title="Replace all">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M17 21l4-4-4-4"/><path d="M3 13v2a4 4 0 0 0 4 4h14"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
         <label for="source">Markdown source</label>
         <textarea id="source" spellcheck="false" aria-label="Markdown source"></textarea>
       </section>
@@ -2092,6 +2126,261 @@ function mount(): void {
     scheduleRender();
   });
   // ────────────────────────────────────────────────────────
+
+  // ── Find/Replace functionality ─────────────────────────────
+  const findReplaceBar = document.querySelector<HTMLElement>("#find-replace-bar")!;
+  const findInput = document.querySelector<HTMLInputElement>("#find-input")!;
+  const replaceInput = document.querySelector<HTMLInputElement>("#replace-input")!;
+  const replaceRow = document.querySelector<HTMLElement>("#replace-row")!;
+  const findInfo = document.querySelector<HTMLElement>("#find-info")!;
+  const findCase = document.querySelector<HTMLInputElement>("#find-case")!;
+  const findRegex = document.querySelector<HTMLInputElement>("#find-regex")!;
+  const btnFindPrev = document.querySelector<HTMLButtonElement>("#btn-find-prev")!;
+  const btnFindNext = document.querySelector<HTMLButtonElement>("#btn-find-next")!;
+  const btnFindClose = document.querySelector<HTMLButtonElement>("#btn-find-close")!;
+  const btnToggleReplace = document.querySelector<HTMLButtonElement>("#btn-find-toggle-replace")!;
+  const btnReplaceOne = document.querySelector<HTMLButtonElement>("#btn-replace-one")!;
+  const btnReplaceAll = document.querySelector<HTMLButtonElement>("#btn-replace-all")!;
+
+  // Sync controls widths so both inputs are the same width
+  const frControlsFind = document.querySelector<HTMLElement>("#fr-controls-find")!;
+  const frControlsReplace = document.querySelector<HTMLElement>("#fr-controls-replace")!;
+  function syncControlsWidth(): void {
+    // Reset previous fixed widths to measure natural sizes
+    frControlsFind.style.width = "";
+    frControlsReplace.style.width = "";
+    const findW = frControlsFind.offsetWidth;
+    const replaceW = frControlsReplace.offsetWidth;
+    const maxW = Math.max(findW, replaceW);
+    if (maxW > 0) {
+      frControlsFind.style.width = maxW + "px";
+      frControlsReplace.style.width = maxW + "px";
+    }
+  }
+
+  let matches: Array<{ index: number; length: number }> = [];
+  let currentMatchIndex = -1;
+
+  function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function buildRegex(searchText: string, caseSensitive: boolean, useRegex: boolean): RegExp | null {
+    if (!searchText) return null;
+    const pattern = useRegex ? searchText : escapeRegex(searchText);
+    const flags = caseSensitive ? "g" : "gi";
+    try {
+      return new RegExp(pattern, flags);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function findAllMatches(): void {
+    const text = source.value;
+    const searchText = findInput.value;
+    const regex = buildRegex(searchText, findCase.checked, findRegex.checked);
+
+    matches = [];
+    if (!regex) {
+      findInfo.textContent = "";
+      return;
+    }
+
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      matches.push({ index: match.index, length: match[0].length });
+      if (match.index === regex.lastIndex) regex.lastIndex++;
+    }
+
+    updateMatchInfo();
+  }
+
+  function updateMatchInfo(): void {
+    if (matches.length === 0) {
+      findInfo.textContent = findInput.value ? "No matches" : "";
+    } else {
+      findInfo.textContent = `${currentMatchIndex + 1}/${matches.length}`;
+    }
+  }
+
+  function highlightCurrentMatch(): void {
+    if (currentMatchIndex < 0 || currentMatchIndex >= matches.length) return;
+
+    const match = matches[currentMatchIndex];
+    const text = source.value;
+    const before = text.substring(0, match.index);
+    const lines = before.split("\n");
+    const lineNum = lines.length;
+
+    source.setSelectionRange(match.index, match.index + match.length);
+
+    const lineHeight = parseFloat(getComputedStyle(source).lineHeight);
+    const targetScroll = (lineNum - 1) * lineHeight - source.clientHeight / 2;
+    if (targetScroll > 0) {
+      source.scrollTop = targetScroll;
+    }
+  }
+
+  function findNext(): void {
+    if (matches.length === 0) {
+      findAllMatches();
+      if (matches.length === 0) return;
+    }
+    currentMatchIndex = (currentMatchIndex + 1) % matches.length;
+    updateMatchInfo();
+    source.focus();
+    highlightCurrentMatch();
+  }
+
+  function findPrev(): void {
+    if (matches.length === 0) {
+      findAllMatches();
+      if (matches.length === 0) return;
+    }
+    currentMatchIndex = (currentMatchIndex - 1 + matches.length) % matches.length;
+    updateMatchInfo();
+    source.focus();
+    highlightCurrentMatch();
+  }
+
+  function replaceOne(): void {
+    if (currentMatchIndex < 0 || currentMatchIndex >= matches.length) return;
+
+    const match = matches[currentMatchIndex];
+    const text = source.value;
+    const before = text.substring(0, match.index);
+    const after = text.substring(match.index + match.length);
+    source.value = before + replaceInput.value + after;
+
+    findAllMatches();
+    if (matches.length > 0) {
+      currentMatchIndex = currentMatchIndex % matches.length;
+      highlightCurrentMatch();
+    } else {
+      currentMatchIndex = -1;
+    }
+    updateMatchInfo();
+    scheduleRender();
+  }
+
+  function replaceAll(): void {
+    const searchText = findInput.value;
+    const replaceText = replaceInput.value;
+    const regex = buildRegex(searchText, findCase.checked, findRegex.checked);
+    if (!regex) return;
+
+    const count = matches.length;
+    source.value = source.value.replace(regex, replaceText);
+    findAllMatches();
+    currentMatchIndex = -1;
+    updateMatchInfo();
+    scheduleRender();
+
+    if (count > 0) {
+      findInfo.textContent = `Replaced ${count} occurrence${count > 1 ? "s" : ""}`;
+    }
+  }
+
+  function showFindBar(withReplace?: boolean): void {
+    findReplaceBar.classList.add("visible");
+    if (withReplace === false) {
+      replaceRow.style.display = "none";
+    } else if (withReplace === true) {
+      replaceRow.style.display = "flex";
+    }
+    findInput.focus();
+    findInput.select();
+    requestAnimationFrame(syncControlsWidth);
+  }
+
+  function hideFindBar(): void {
+    findReplaceBar.classList.remove("visible");
+    matches = [];
+    currentMatchIndex = -1;
+    findInfo.textContent = "";
+    source.focus();
+  }
+
+  function toggleReplaceRow(): void {
+    const isVisible = replaceRow.style.display !== "none";
+    replaceRow.style.display = isVisible ? "none" : "flex";
+    if (!isVisible) {
+      replaceInput.focus();
+      requestAnimationFrame(syncControlsWidth);
+    }
+  }
+
+  // Event listeners
+  btnFindNext.addEventListener("click", findNext);
+  btnFindPrev.addEventListener("click", findPrev);
+  btnFindClose.addEventListener("click", hideFindBar);
+  btnToggleReplace.addEventListener("click", toggleReplaceRow);
+  btnReplaceOne.addEventListener("click", replaceOne);
+  btnReplaceAll.addEventListener("click", replaceAll);
+
+  findInput.addEventListener("input", () => {
+    findAllMatches();
+    currentMatchIndex = matches.length > 0 ? 0 : -1;
+    if (matches.length > 0) {
+      highlightCurrentMatch();
+    }
+  });
+
+  findInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        findPrev();
+      } else {
+        findNext();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      hideFindBar();
+    }
+  });
+
+  replaceInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      replaceOne();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      hideFindBar();
+    }
+  });
+
+  findCase.addEventListener("change", () => {
+    findAllMatches();
+    currentMatchIndex = matches.length > 0 ? 0 : -1;
+    if (matches.length > 0) {
+      highlightCurrentMatch();
+    }
+  });
+
+  findRegex.addEventListener("change", () => {
+    findAllMatches();
+    currentMatchIndex = matches.length > 0 ? 0 : -1;
+    if (matches.length > 0) {
+      highlightCurrentMatch();
+    }
+  });
+
+  // Keyboard shortcuts — document-level so they work regardless of focus
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+      e.preventDefault();
+      showFindBar(false);
+    } else if ((e.ctrlKey || e.metaKey) && e.key === "h") {
+      e.preventDefault();
+      showFindBar(true);
+    } else if (e.key === "Escape" && findReplaceBar.classList.contains("visible")) {
+      e.preventDefault();
+      hideFindBar();
+    }
+  });
+  // ─────────────────────────────────────────────────────────
 
   let currentFileName = "document.md";
   let fileHandle: FileSystemFileHandle | null = null;
