@@ -1,21 +1,23 @@
 # Markdown Viewer
 
-A lightweight web-based tool for viewing and rendering Markdown documents with embedded PlantUML diagrams and MyST syntax support.
+[中文文档](README.zh-CN.md)
+
+A lightweight, browser-based document editor and renderer for Markdown, PlantUML, and source code files. Features real-time preview, syntax highlighting for 100+ programming languages, and seamless file system integration.
 
 ## Features
 
-- Live Markdown preview with GitHub Flavored Markdown (GFM) support
-- PlantUML diagram rendering via the official PlantUML public server
-- **MyST (Markedly Structured Text) support**: `{tab-set}`, `{tab-item}`, `{grid}`, `{grid-item}`
-- Drag-and-drop or file picker to load files; **preview follows the filename suffix**: Markdown (`.md`, `.mdx`, …) is rendered as Markdown; `.puml` / `.plantuml` render as PlantUML diagrams; other text/source files are shown as **syntax-highlighted source** only (not parsed as Markdown)
-- **Direct file save** with File System Access API (Chrome/Edge)
-- Toggle Source/Preview panels (show/hide)
-- **Resizable panels** with draggable divider
-- SVG or PNG output format for diagrams
-- Internal anchor links stay in the preview; **http(s)** links open in a new tab
-- **Relative links** to other files (same folder or subfolders, e.g. `./other.md`, `notes/x.md`) open the target in a **new browser window** with this app when you use Chrome or Edge. **Link the project folder** by **dragging a project folder** onto the page, or when you first follow a relative link choose **OK** in the prompt to open the folder picker immediately. After linking, paths resolve under that folder; the new window receives the file via IndexedDB (no server required). **Firefox and Safari** do not support the File System Access API used for this; relative local links will show an explanatory message instead.
-- Dark/light mode support (follows system preference)
-- Responsive layout
+- **Multi-format document rendering**: Markdown (GFM), PlantUML diagrams, and syntax-highlighted source code for 100+ programming languages
+- **Real-time preview**: Live rendering with debounced updates for smooth editing experience
+- **Built-in source editor**: Full-featured text editing with syntax highlighting, find & replace, and direct file save
+- **PlantUML integration**: Render UML diagrams via the official PlantUML server with automatic `@startuml`/`@enduml` wrapping
+- **MyST (Markedly Structured Text) support**: `{tab-set}`, `{tab-item}`, `{grid}`, `{grid-item}` directives
+- **File system access**: Drag-and-drop or file picker to load files; direct save with File System Access API (Chrome/Edge)
+- **Find & Replace**: In-editor search with regex support, case-sensitive matching, and match navigation
+- **Flexible layout**: Resizable split panels with toggleable Source/Preview views
+- **Diagram output options**: SVG or PNG format for PlantUML and Mermaid diagrams
+- **Smart link handling**: Internal anchors stay in preview; external links open in new tabs; relative file links open in new windows with workspace folder linking
+- **Theme support**: Dark/light mode following system preferences
+- **Responsive design**: Adaptive layout for various screen sizes
 
 ## Quick Start (Standalone)
 
@@ -43,8 +45,8 @@ npm run dev
 # Build for production
 npm run build
 
-# Preview production build
-npm run preview
+# Start production server
+npm start
 ```
 
 Requirements:
@@ -81,6 +83,18 @@ Drag the divider between Source and Preview panels to adjust their widths.
 
 - **Chrome/Edge**: Click "Save" to save directly to the original file (or use Save As dialog)
 - **Other browsers**: Click "Save" to download the file
+
+### Find & Replace
+
+Open the find bar in the source editor panel:
+
+- **Ctrl+F** (Cmd+F on Mac): Open find bar
+- **Ctrl+H** (Cmd+H on Mac): Open find bar with replace field
+- **Enter**: Find next match
+- **Shift+Enter**: Find previous match
+- **Esc**: Close find bar
+
+The find bar supports case-sensitive matching and regular expressions.
 
 ### PlantUML Syntax
 
