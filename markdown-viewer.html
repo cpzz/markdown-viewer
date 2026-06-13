@@ -3498,6 +3498,8 @@ main.single-panel .resizer { display: none; }
           await writable.write(content);
           await writable.close();
           lastSavedContent = content;
+          fileOpened = true;
+          updateFilenameDisplay();
           return; // Saved successfully
         } catch (e) {
           console.warn("Could not save to original file:", e);
@@ -3517,6 +3519,7 @@ main.single-panel .resizer { display: none; }
           });
           fileHandle = newHandle;
           currentFileName = newHandle.name;
+          fileOpened = true;
           updateFilenameDisplay();
           var writable = await newHandle.createWritable();
           await writable.write(content);
@@ -3544,6 +3547,8 @@ main.single-panel .resizer { display: none; }
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       lastSavedContent = content;
+      fileOpened = true;
+      updateFilenameDisplay();
     }
 
     btnOpenFile.addEventListener("click", function() {

@@ -3263,6 +3263,8 @@ function mount(): void {
         await writable.write(content);
         await writable.close();
         lastSavedContent = content;
+        fileOpened = true;
+        updateFilenameDisplay();
         return;
       } catch (e) {
         console.warn("Could not save to original file:", e);
@@ -3284,6 +3286,7 @@ function mount(): void {
         });
         fileHandle = newHandle;
         currentFileName = newHandle.name;
+        fileOpened = true;
         updateFilenameDisplay();
         const writable = await newHandle.createWritable();
         await writable.write(content);
@@ -3311,6 +3314,8 @@ function mount(): void {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     lastSavedContent = content;
+    fileOpened = true;
+    updateFilenameDisplay();
   }
 
   btnOpenFile.addEventListener("click", () => void openFileWithPicker());
