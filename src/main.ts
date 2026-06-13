@@ -2017,7 +2017,6 @@ function mount(): void {
       <section class="panel" id="panel-preview">
         <label for="preview-wrap">Preview</label>
         <div id="preview-wrap" tabindex="-1">
-          <div id="usage-watermark">Drag a .md, .puml, or .xmind file or a project folder onto the page, or use Open file</div>
           <article id="preview"></article>
         </div>
       </section>
@@ -2077,7 +2076,6 @@ function mount(): void {
   const btnToggleSource = document.querySelector<HTMLButtonElement>("#btn-toggle-source")!;
   const btnTogglePreview = document.querySelector<HTMLButtonElement>("#btn-toggle-preview")!;
   const filenameDisplay = document.querySelector<HTMLElement>("#filename-display")!;
-  const usageWatermark = document.querySelector<HTMLElement>("#usage-watermark")!;
   const fitWidthCheckbox = document.querySelector<HTMLInputElement>("#fit-width")!;
   const tab2spacesCheckbox = document.querySelector<HTMLInputElement>("#tab2spaces")!;
   const tabSpacesNum = document.querySelector<HTMLSelectElement>("#tab-spaces-num")!;
@@ -2394,10 +2392,9 @@ function mount(): void {
     filenameDisplay.textContent = fileOpened ? currentFileName : "";
   }
 
-  function hideWatermark(): void {
+  function markFileOpened(): void {
     if (!fileOpened) {
       fileOpened = true;
-      usageWatermark.style.display = "none";
       updateFilenameDisplay();
     }
   }
@@ -2928,7 +2925,7 @@ function mount(): void {
     }
     source.value = text;
     lastSavedContent = text;
-    hideWatermark();
+    markFileOpened();
     updateReopenButton();
     await refreshWorkspacePath();
     if (!currentRelPathInWorkspace) {
@@ -3075,7 +3072,7 @@ function mount(): void {
       void file.arrayBuffer().then((buf) => parseXmindToMarkdown(buf)).then((text) => {
         source.value = text;
         lastSavedContent = text;
-        hideWatermark();
+        markFileOpened();
         updateFilenameDisplay();
         scheduleRender();
       });
@@ -3083,7 +3080,7 @@ function mount(): void {
       void file.text().then((text) => {
         source.value = text;
         lastSavedContent = text;
-        hideWatermark();
+        markFileOpened();
         updateFilenameDisplay();
         scheduleRender();
       });
@@ -3128,7 +3125,7 @@ function mount(): void {
         }
         source.value = text;
         lastSavedContent = text;
-        hideWatermark();
+        markFileOpened();
         updateFilenameDisplay();
         scheduleRender();
         updateReopenButton();
@@ -3161,7 +3158,7 @@ function mount(): void {
       }
       source.value = text;
       lastSavedContent = text;
-      hideWatermark();
+      markFileOpened();
       updateFilenameDisplay();
       scheduleRender();
       await refreshWorkspacePath();
@@ -3411,7 +3408,7 @@ function mount(): void {
             }
             source.value = text;
             lastSavedContent = text;
-            hideWatermark();
+            markFileOpened();
             updateFilenameDisplay();
             scheduleRender();
             updateReopenButton();

@@ -362,21 +362,6 @@ main.single-panel .resizer { display: none; }
   background: var(--surface);
 }
 
-#usage-watermark {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.125rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--fg-muted);
-  pointer-events: none;
-  text-align: center;
-  padding: 2rem;
-}
-
 /* Preview typography */
 #preview {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
