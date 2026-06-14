@@ -80,12 +80,14 @@ function escapeHtml(s: string): string {
 /** Process common escape sequences: \n \t \r \\ \" \' */
 function processEscapeSequences(s: string): string {
   return s
-    .replaceAll("\\n", "\n")
-    .replaceAll("\\t", "\t")
-    .replaceAll("\\r", "\r")
-    .replaceAll('\\"', '"')
-    .replaceAll("\\'", "'")
-    .replaceAll("\\\\", "\\");
+    // \n \t \r -> actual newline/tab/carriage return (only if not preceded by \)
+    .replace(/(?<!\\)\\n/g, "\n")
+    .replace(/(?<!\\)\\t/g, "\t")
+    .replace(/(?<!\\)\\r/g, "\r")
+    // Standard escape sequences for quotes and backslash
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\\\/g, "\\");
 }
 
 /** Fenced code (non-diagram): icon copy of rendered / highlighted text (`textContent`). */
@@ -1884,7 +1886,10 @@ marked.use({
         return `<figure class="mermaid-block" id="${id}"></figure>`;
       }
       const langClass = lang ? ` class="language-${lang}"` : "";
-      const escaped = escapeHtml(token.text);
+      let codeText = token.text;
+      // Process escape sequences for all code blocks
+      codeText = processEscapeSequences(codeText);
+      const escaped = escapeHtml(codeText);
       return codeBlockWithCopyButton(langClass, escaped);
     },
   },
@@ -2564,10 +2569,8 @@ function mount(): void {
     if (!isMarkdownDocumentPath(currentFileName) && !isXmindDocumentPath(currentFileName)) {
       const lang = prismLangForSourcePreview(currentFileName, source.value);
       let displayContent = source.value;
-      const ext = pathFileExtension(currentFileName);
-      if (ext === "json" || ext === "yaml" || ext === "yml") {
-        displayContent = processEscapeSequences(displayContent);
-      }
+      // Process escape sequences for all file types
+      displayContent = processEscapeSequences(displayContent);
       const langClass = lang ? ` class="language-${lang}"` : "";
 
       // Check if code is minified (has very long lines)

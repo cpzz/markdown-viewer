@@ -807,10 +807,12 @@ main.single-panel .resizer { display: none; }
   /** Process common escape sequences: \n \t \r \\ \" \' */
   function processEscapeSequences(s) {
     return s
-      .replace(/\\n/g, "\n")
-      .replace(/\\t/g, "\t")
-      .replace(/\\r/g, "\r")
-      .replace(/\\\"/g, '"')
+      // \n \t \r -> actual newline/tab/carriage return (only if not preceded by \)
+      .replace(/(?<!\\)\\n/g, "\n")
+      .replace(/(?<!\\)\\t/g, "\t")
+      .replace(/(?<!\\)\\r/g, "\r")
+      // Standard escape sequences for quotes and backslash
+      .replace(/\\"/g, '"')
       .replace(/\\'/g, "'")
       .replace(/\\\\/g, "\\");
   }
@@ -2284,7 +2286,10 @@ main.single-panel .resizer { display: none; }
           return '<figure class="mermaid-block" id="' + id + '"></figure>';
         }
         const langClass = lang ? ' class="language-' + lang + '"' : "";
-        const escaped = escapeHtml(token.text);
+        var codeText = token.text;
+        // Process escape sequences for all code blocks
+        codeText = processEscapeSequences(codeText);
+        const escaped = escapeHtml(codeText);
         return codeBlockWithCopyButton(langClass, escaped);
       }
     }
@@ -2792,9 +2797,8 @@ main.single-panel .resizer { display: none; }
         var lang = prismLangForSourcePreview(currentFileName, source.value);
         var displayContent = source.value;
         var ext = pathFileExtension(currentFileName);
-        if (ext === "json" || ext === "yaml" || ext === "yml") {
-          displayContent = processEscapeSequences(displayContent);
-        }
+        // Process escape sequences for all file types
+      displayContent = processEscapeSequences(displayContent);
         var langClass = lang ? ' class="language-' + lang + '"' : "";
 
         // Check if code is minified (has very long lines)
