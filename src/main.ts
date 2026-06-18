@@ -1886,10 +1886,7 @@ marked.use({
         return `<figure class="mermaid-block" id="${id}"></figure>`;
       }
       const langClass = lang ? ` class="language-${lang}"` : "";
-      let codeText = token.text;
-      // Process escape sequences for all code blocks
-      codeText = processEscapeSequences(codeText);
-      const escaped = escapeHtml(codeText);
+      const escaped = escapeHtml(token.text);
       return codeBlockWithCopyButton(langClass, escaped);
     },
   },
@@ -2011,6 +2008,9 @@ function mount(): void {
               </button>
               <button type="button" id="btn-replace-all" class="btn-fr" title="Replace all">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M17 21l4-4-4-4"/><path d="M3 13v2a4 4 0 0 0 4 4h14"/></svg>
+              </button>
+              <button type="button" id="btn-escape-replace" class="btn-fr" title="Replace escape sequences (\\n, \\t, etc.)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><polyline points="10 12 12 14 14 12"/></svg>
               </button>
             </div>
           </div>
@@ -2144,6 +2144,7 @@ function mount(): void {
   const btnToggleReplace = document.querySelector<HTMLButtonElement>("#btn-find-toggle-replace")!;
   const btnReplaceOne = document.querySelector<HTMLButtonElement>("#btn-replace-one")!;
   const btnReplaceAll = document.querySelector<HTMLButtonElement>("#btn-replace-all")!;
+  const btnEscapeReplace = document.querySelector<HTMLButtonElement>("#btn-escape-replace")!;
 
   // Sync controls widths so both inputs are the same width
   const frControlsFind = document.querySelector<HTMLElement>("#fr-controls-find")!;
@@ -2285,6 +2286,21 @@ function mount(): void {
     }
   }
 
+  function replaceEscapeSequences(): void {
+    const originalText = source.value;
+    const processedText = processEscapeSequences(originalText);
+    
+    if (originalText !== processedText) {
+      source.focus();
+      source.select();
+      document.execCommand("insertText", false, processedText);
+      findAllMatches();
+      currentMatchIndex = -1;
+      updateMatchInfo();
+      scheduleRender();
+    }
+  }
+
   function showFindBar(withReplace?: boolean): void {
     findReplaceBar.classList.add("visible");
     if (withReplace === false) {
@@ -2321,6 +2337,7 @@ function mount(): void {
   btnToggleReplace.addEventListener("click", toggleReplaceRow);
   btnReplaceOne.addEventListener("click", replaceOne);
   btnReplaceAll.addEventListener("click", replaceAll);
+  btnEscapeReplace.addEventListener("click", replaceEscapeSequences);
 
   findInput.addEventListener("input", () => {
     findAllMatches();
@@ -2569,8 +2586,6 @@ function mount(): void {
     if (!isMarkdownDocumentPath(currentFileName) && !isXmindDocumentPath(currentFileName)) {
       const lang = prismLangForSourcePreview(currentFileName, source.value);
       let displayContent = source.value;
-      // Process escape sequences for all file types
-      displayContent = processEscapeSequences(displayContent);
       const langClass = lang ? ` class="language-${lang}"` : "";
 
       // Check if code is minified (has very long lines)
