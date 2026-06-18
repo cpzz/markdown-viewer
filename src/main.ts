@@ -93,11 +93,9 @@ function processEscapeSequences(s: string): string {
 /** Fenced code (non-diagram): icon copy of rendered / highlighted text (`textContent`). */
 const CODE_BLOCK_CLIPBOARD_ICON = `<span class="code-block__copy-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>`;
 const CODE_BLOCK_CHECK_ICON = `<span class="code-block__copy-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`;
-const CODE_BLOCK_FORMAT_ICON = `<span class="code-block__format-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg></span>`;
-const CODE_BLOCK_FORMAT_DONE_ICON = `<span class="code-block__format-done" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`;
 
 function codeBlockWithCopyButton(langClass: string, escapedBody: string): string {
-  return `<div class="code-block-wrap"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">${CODE_BLOCK_CLIPBOARD_ICON}${CODE_BLOCK_CHECK_ICON}</button><button type="button" class="code-block__format btn btn--icon" aria-label="Format code" title="Format code">${CODE_BLOCK_FORMAT_ICON}${CODE_BLOCK_FORMAT_DONE_ICON}</button><pre><code${langClass}>${escapedBody}</code></pre></div>`;
+  return `<div class="code-block-wrap"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">${CODE_BLOCK_CLIPBOARD_ICON}${CODE_BLOCK_CHECK_ICON}</button><pre><code${langClass}>${escapedBody}</code></pre></div>`;
 }
 
 /** File path / name → basename (handles `/` and `\\`). */
@@ -3011,36 +3009,6 @@ function mount(): void {
             alert("Could not copy to clipboard.");
           },
         );
-        return;
-      }
-
-      const formatBtn = (e.target as HTMLElement | null)?.closest?.(".code-block__format");
-      if (formatBtn && preview.contains(formatBtn)) {
-        e.preventDefault();
-        e.stopPropagation();
-        const wrap = formatBtn.closest(".code-block-wrap");
-        const codeEl = wrap?.querySelector("pre code");
-        if (!codeEl) return;
-        const text = codeEl.textContent ?? "";
-        const langClass = codeEl.className || "";
-        const langMatch = langClass.match(/language-(\w+)/);
-        const lang = langMatch ? resolvePrismLang(langMatch[1]) : "";
-
-        const formatted = tryFormatCode(text, lang);
-        if (formatted === null) {
-          alert("Could not format this code. Language may not be supported.");
-          return;
-        }
-
-        // Re-highlight the formatted code
-        const highlighted = highlightWithPrism(formatted, lang);
-        codeEl.innerHTML = highlighted;
-        formatBtn.setAttribute("data-formatted", "");
-        formatBtn.setAttribute("aria-label", "Formatted");
-        window.setTimeout(() => {
-          formatBtn.removeAttribute("data-formatted");
-          formatBtn.setAttribute("aria-label", "Format code");
-        }, 2000);
         return;
       }
 
