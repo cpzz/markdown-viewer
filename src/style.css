@@ -97,6 +97,10 @@ body {
   pointer-events: none;
 }
 
+html[data-locale="zh"] #app.drag-active::after {
+  content: "将 Markdown 文件或项目文件夹拖到这里";
+}
+
 /* Header — translucent glass nav */
 header {
   flex-shrink: 0;

@@ -80,6 +80,11 @@ body {
 }
 #app.drag-active::after {
   content: "Drop a markdown file or project folder here";
+}
+html[data-locale="zh"] #app.drag-active::after {
+  content: "将 Markdown 文件或项目文件夹拖到这里";
+}
+#app.drag-active::after {
   position: absolute;
   inset: 0;
   z-index: 10;
@@ -775,6 +780,88 @@ main.single-panel .resizer { display: none; }
 
   <script>
 (function() {
+  /* ── i18n ─────────────────────────────────────────────────────── */
+  var I18N = {
+    en: {
+      app_title: "Markdown Viewer", open_file: "Open file", reopen_file: "Reopen file",
+      format_file: "Format file", save_file: "Save file", source: "Source", preview: "Preview",
+      show_source: "Show source panel", show_preview: "Show preview panel",
+      settings: "Settings", toggle_dark_mode: "Toggle dark mode", switch_lang: "Switch language",
+      switch_to_light: "Switch to light mode", switch_to_dark: "Switch to dark mode",
+      find: "Find", replace: "Replace", previous: "Previous (Shift+Enter)", next: "Next (Enter)",
+      case_sensitive: "Case sensitive", regex: "Regex", toggle_replace: "Toggle replace",
+      close: "Close (Esc)", replace_one: "Replace", replace_all: "Replace all",
+      replace_escape: "Replace escape sequences (\\n, \\t, etc.)", no_matches: "No matches",
+      markdown_source: "Markdown source", preview_label: "Preview", settings_title: "Settings",
+      close_settings: "Close settings", fit_width: "Fit to Width", convert_tabs: "Convert Tabs to Spaces",
+      tab_size: "Tab Size", image_format: "Image Format", copy_code: "Copy code", copied: "Copied",
+      copy_failed: "Could not copy to clipboard.", untitled: "Untitled",
+      plantuml_error: "PlantUML encode error", mermaid_error: "Mermaid error",
+      folder_link_unavailable: "Folder linking is not available in this browser. Try Chrome or Edge.",
+      folder_not_contain: "That folder does not contain the file you have open. Pick a parent folder (for example your project root) that contains this file.",
+      folder_linked: "Folder linked. Use Open file \u2014 the dialog will start in this folder.",
+      open_linked_unsupported: "Opening linked local files is not available in this browser. Firefox and Safari do not implement the File System Access API (file handles and folder linking). Use Chrome, Edge, or another Chromium-based browser for this feature.",
+      open_file_hint: 'Use the "Open file" button and pick your document in the system file dialog. That is required so the app receives a file handle.',
+      link_unresolved: "Could not resolve that link path from the current file.",
+      linked_file_error: "Could not open the linked file. Check that the path exists and stays inside the folder you granted access to.",
+      stage_file_error: "Could not stage the file for a new window (IndexedDB may be unavailable).",
+      invalid_json: "Invalid JSON \u2014 cannot format.",
+      folder_linked_confirm: "Project folder linked. Use Open file to choose a file inside this folder.",
+      popup_blocked: "Popup blocked. Open the linked file in this window instead?",
+      unsaved_changes_reopen: "You have unsaved changes. Reopen will discard them. Continue?",
+      save_changes_prefix: 'Save changes to "',
+      save_changes_suffix: '"?',
+      relink_prompt: "The file you have open is not inside your linked folder.\\n\\nClick OK to open the folder picker and choose a folder that contains this file. Click Cancel to stop.",
+      link_folder_prompt: "Link a folder so relative file links can be resolved.\\n\\nClick OK to open the system folder picker now and choose a folder that contains your current file. Click Cancel to try later (you can also drag a project folder onto the page)."
+    },
+    zh: {
+      app_title: "Markdown \u67e5\u770b\u5668", open_file: "\u6253\u5f00\u6587\u4ef6", reopen_file: "\u91cd\u65b0\u6253\u5f00",
+      format_file: "\u683c\u5f0f\u5316\u6587\u4ef6", save_file: "\u4fdd\u5b58\u6587\u4ef6", source: "\u6e90\u7801", preview: "\u9884\u89c8",
+      show_source: "\u663e\u793a\u6e90\u7801\u9762\u677f", show_preview: "\u663e\u793a\u9884\u89c8\u9762\u677f",
+      settings: "\u8bbe\u7f6e", toggle_dark_mode: "\u5207\u6362\u6df1\u8272\u6a21\u5f0f", switch_lang: "\u5207\u6362\u8bed\u8a00",
+      switch_to_light: "\u5207\u6362\u5230\u6d45\u8272\u6a21\u5f0f", switch_to_dark: "\u5207\u6362\u5230\u6df1\u8272\u6a21\u5f0f",
+      find: "\u67e5\u627e", replace: "\u66ff\u6362", previous: "\u4e0a\u4e00\u4e2a (Shift+Enter)", next: "\u4e0b\u4e00\u4e2a (Enter)",
+      case_sensitive: "\u533a\u5206\u5927\u5c0f\u5199", regex: "\u6b63\u5219\u8868\u8fbe\u5f0f", toggle_replace: "\u5c55\u5f00\u66ff\u6362",
+      close: "\u5173\u95ed (Esc)", replace_one: "\u66ff\u6362", replace_all: "\u5168\u90e8\u66ff\u6362",
+      replace_escape: "\u8f6c\u4e49\u5e8f\u5217\u66ff\u6362 (\\n, \\t \u7b49)", no_matches: "\u65e0\u5339\u914d",
+      markdown_source: "Markdown \u6e90\u7801", preview_label: "\u9884\u89c8", settings_title: "\u8bbe\u7f6e",
+      close_settings: "\u5173\u95ed\u8bbe\u7f6e", fit_width: "\u9002\u5e94\u5bbd\u5ea6", convert_tabs: "Tab \u8f6c\u7a7a\u683c",
+      tab_size: "Tab \u5927\u5c0f", image_format: "\u56fe\u7247\u683c\u5f0f", copy_code: "\u590d\u5236\u4ee3\u7801", copied: "\u5df2\u590d\u5236",
+      copy_failed: "\u65e0\u6cd5\u590d\u5236\u5230\u526a\u8d34\u677f\u3002", untitled: "\u672a\u547d\u540d",
+      plantuml_error: "PlantUML \u7f16\u7801\u9519\u8bef", mermaid_error: "Mermaid \u9519\u8bef",
+      folder_link_unavailable: "\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u6587\u4ef6\u5939\u5173\u8054\u3002\u8bf7\u4f7f\u7528 Chrome \u6216 Edge\u3002",
+      folder_not_contain: "\u8be5\u6587\u4ef6\u5939\u4e0d\u5305\u542b\u5f53\u524d\u6253\u5f00\u7684\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u4e00\u4e2a\u5305\u542b\u8be5\u6587\u4ef6\u7684\u7236\u6587\u4ef6\u5939\uff08\u4f8b\u5982\u9879\u76ee\u6839\u76ee\u5f55\uff09\u3002",
+      folder_linked: "\u6587\u4ef6\u5939\u5df2\u5173\u8054\u3002\u4f7f\u7528\u201c\u6253\u5f00\u6587\u4ef6\u201d\u6309\u94ae\uff0c\u5bf9\u8bdd\u6846\u5c06\u4ece\u8be5\u6587\u4ef6\u5939\u5f00\u59cb\u3002",
+      open_linked_unsupported: "\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u6253\u5f00\u5173\u8054\u7684\u672c\u5730\u6587\u4ef6\u3002Firefox \u548c Safari \u672a\u5b9e\u73b0 File System Access API\u3002\u8bf7\u4f7f\u7528 Chrome\u3001Edge \u6216\u5176\u4ed6\u57fa\u4e8e Chromium \u7684\u6d4f\u89c8\u5668\u3002",
+      open_file_hint: "\u8bf7\u4f7f\u7528\u201c\u6253\u5f00\u6587\u4ef6\u201d\u6309\u94ae\uff0c\u5728\u7cfb\u7edf\u6587\u4ef6\u5bf9\u8bdd\u6846\u4e2d\u9009\u62e9\u6587\u6863\u3002\u8fd9\u6837\u5e94\u7528\u624d\u80fd\u83b7\u53d6\u6587\u4ef6\u53e5\u67c4\u3002",
+      link_unresolved: "\u65e0\u6cd5\u4ece\u5f53\u524d\u6587\u4ef6\u89e3\u6790\u8be5\u94fe\u63a5\u8def\u5f84\u3002",
+      linked_file_error: "\u65e0\u6cd5\u6253\u5f00\u5173\u8054\u6587\u4ef6\u3002\u8bf7\u68c0\u67e5\u8def\u5f84\u662f\u5426\u5b58\u5728\u4e14\u5728\u5df2\u6388\u6743\u7684\u6587\u4ef6\u5939\u5185\u3002",
+      stage_file_error: "\u65e0\u6cd5\u4e3a\u65b0\u7a97\u53e3\u51c6\u5907\u6587\u4ef6\uff08IndexedDB \u53ef\u80fd\u4e0d\u53ef\u7528\uff09\u3002",
+      invalid_json: "JSON \u683c\u5f0f\u65e0\u6548\uff0c\u65e0\u6cd5\u683c\u5f0f\u5316\u3002",
+      folder_linked_confirm: "\u9879\u76ee\u6587\u4ef6\u5939\u5df2\u5173\u8054\u3002\u8bf7\u4f7f\u7528\u201c\u6253\u5f00\u6587\u4ef6\u201d\u9009\u62e9\u8be5\u6587\u4ef6\u5939\u5185\u7684\u6587\u4ef6\u3002",
+      popup_blocked: "\u5f39\u51fa\u7a97\u53e3\u88ab\u963b\u6b62\u3002\u662f\u5426\u5728\u5f53\u524d\u7a97\u53e3\u6253\u5f00\u5173\u8054\u6587\u4ef6\uff1f",
+      unsaved_changes_reopen: "\u6709\u672a\u4fdd\u5b58\u7684\u66f4\u6539\u3002\u91cd\u65b0\u6253\u5f00\u5c06\u4e22\u5f03\u66f4\u6539\u3002\u662f\u5426\u7ee7\u7eed\uff1f",
+      save_changes_prefix: "\u662f\u5426\u4fdd\u5b58\u5bf9 \"",
+      save_changes_suffix: "\" \u7684\u66f4\u6539\uff1f",
+      relink_prompt: "\u5f53\u524d\u6253\u5f00\u7684\u6587\u4ef6\u4e0d\u5728\u5df2\u5173\u8054\u7684\u6587\u4ef6\u5939\u5185\u3002\\n\\n\u70b9\u51fb\u201c\u786e\u5b9a\u201d\u6253\u5f00\u6587\u4ef6\u5939\u9009\u62e9\u5668\uff0c\u9009\u62e9\u5305\u542b\u8be5\u6587\u4ef6\u7684\u6587\u4ef6\u5939\u3002\u70b9\u51fb\u201c\u53d6\u6d88\u201d\u505c\u6b62\u3002",
+      link_folder_prompt: "\u5173\u8054\u6587\u4ef6\u5939\u4ee5\u89e3\u6790\u76f8\u5bf9\u94fe\u63a5\u3002\\n\\n\u70b9\u51fb\u201c\u786e\u5b9a\u201d\u6253\u5f00\u7cfb\u7edf\u6587\u4ef6\u5939\u9009\u62e9\u5668\uff0c\u9009\u62e9\u5305\u542b\u5f53\u524d\u6587\u4ef6\u7684\u6587\u4ef6\u5939\u3002\u70b9\u51fb\u201c\u53d6\u6d88\u201d\u7a0d\u540e\u518d\u8bd5\uff08\u4e5f\u53ef\u4ee5\u5c06\u9879\u76ee\u6587\u4ef6\u5939\u62d6\u5230\u9875\u9762\u4e0a\uff09\u3002"
+    }
+  };
+  var currentLocale = (localStorage.getItem("locale")) || "en";
+  function t(key) { return (I18N[currentLocale] && I18N[currentLocale][key]) || I18N.en[key] || key; }
+  function applyI18n() {
+    document.documentElement.setAttribute("data-locale", currentLocale);
+    document.querySelectorAll("[data-i18n]").forEach(function(el) {
+      var key = el.getAttribute("data-i18n");
+      var text = t(key);
+      var attrs = el.getAttribute("data-i18n-attr");
+      if (attrs) { attrs.split(",").forEach(function(a) { a = a.trim(); if (a) el.setAttribute(a, text); }); }
+      else { el.textContent = text; }
+    });
+  }
+  function setLocale(lang) { currentLocale = lang; localStorage.setItem("locale", lang); applyI18n(); }
+  /* ── end i18n ─────────────────────────────────────────────────── */
+
   const PLANTUML_BASE = "https://www.plantuml.com/plantuml";
   let plantumlOutputFormat = "svg";
   var mermaidQueue = [];
@@ -823,7 +910,7 @@ main.single-panel .resizer { display: none; }
 
   function codeBlockWithCopyButton(langClass, escapedBody) {
     return (
-      '<div class="code-block-wrap"><div class="code-block__toolbar"><button type="button" class="code-block__copy btn btn--icon" aria-label="Copy code" title="Copy code">' +
+      '<div class="code-block-wrap"><div class="code-block__toolbar"><button type="button" class="code-block__copy btn btn--icon" aria-label="' + t("copy_code") + '" title="' + t("copy_code") + '">' +
       CODE_BLOCK_CLIPBOARD_ICON +
       CODE_BLOCK_CHECK_ICON +
       '</button></div><pre><code' +
@@ -1580,7 +1667,7 @@ main.single-panel .resizer { display: none; }
   function sheetJsonToTree(sheet) {
     var sc = (sheet.rootTopic && sheet.rootTopic.structureClass) || null;
     return {
-      title: sheet.title || "Untitled",
+      title: sheet.title || t("untitled"),
       root: sheet.rootTopic ? jsonTopicToTree(sheet.rootTopic) : null,
       layout: structureClassToLayout(sc)
     };
@@ -1609,7 +1696,7 @@ main.single-panel .resizer { display: none; }
       var titleEl = sheet.querySelector(":scope > title");
       var sc = rootTopic ? rootTopic.getAttribute("structure-class") : null;
       sheetTrees.push({
-        title: titleEl ? titleEl.textContent : "Untitled",
+        title: titleEl ? titleEl.textContent : t("untitled"),
         root: rootTopic ? xmlTopicToTree(rootTopic) : null,
         layout: structureClassToLayout(sc)
       });
@@ -2269,7 +2356,7 @@ main.single-panel .resizer { display: none; }
           try {
             return renderPlantUmlBlock(token.text, plantumlOutputFormat);
           } catch (e) {
-            return '<p class="plantuml-error">PlantUML encode error: ' + escapeHtml(e.message) + '</p>';
+            return '<p class="plantuml-error">' + t("plantuml_error") + ': ' + escapeHtml(e.message) + '</p>';
           }
         }
         if (lang === "mermaid") {
@@ -2436,67 +2523,70 @@ main.single-panel .resizer { display: none; }
 
     app.innerHTML = 
       '<header>' +
-        '<h1>Markdown Viewer</h1>' +
+        '<h1 data-i18n="app_title">Markdown Viewer</h1>' +
         '<p class="hint" id="filename-display"></p>' +
         '<div class="controls">' +
           '<input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,.xmind,text/markdown,text/plain" hidden />' +
-          '<button type="button" id="btn-open-file" class="btn btn--icon" aria-label="Open file" title="Open file">' +
+          '<button type="button" id="btn-open-file" class="btn btn--icon" data-i18n="open_file" data-i18n-attr="aria-label,title">' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' +
           '</button>' +
-          '<button type="button" id="btn-reopen-file" class="btn btn--icon" aria-label="Reopen file" title="Reopen file" disabled>' +
+          '<button type="button" id="btn-reopen-file" class="btn btn--icon" data-i18n="reopen_file" data-i18n-attr="aria-label,title" disabled>' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>' +
           '</button>' +
-          '<button type="button" id="btn-format-file" class="btn btn--icon" aria-label="Format file" title="Format file">' +
+          '<button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>' +
           '</button>' +
-          '<button type="button" id="btn-save-file" class="btn btn--icon" aria-label="Save file" title="Save file">' +
+          '<button type="button" id="btn-save-file" class="btn btn--icon" data-i18n="save_file" data-i18n-attr="aria-label,title">' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>' +
           '</button>' +
           '<div class="toggle-group">' +
-            '<button type="button" id="btn-toggle-source" class="btn btn--icon toggle active" aria-pressed="true" aria-label="Show source panel" title="Source">' +
+            '<button type="button" id="btn-toggle-source" class="btn btn--icon toggle active" aria-pressed="true" data-i18n="show_source" data-i18n-attr="aria-label" title="' + t("source") + '">' +
               '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' +
             '</button>' +
-            '<button type="button" id="btn-toggle-preview" class="btn btn--icon toggle active" aria-pressed="true" aria-label="Show preview panel" title="Preview">' +
+            '<button type="button" id="btn-toggle-preview" class="btn btn--icon toggle active" aria-pressed="true" data-i18n="show_preview" data-i18n-attr="aria-label" title="' + t("preview") + '">' +
               '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>' +
             '</button>' +
           '</div>' +
-          '<button type="button" id="btn-settings" class="btn btn--icon" aria-label="Open settings" title="Settings">' +
+          '<button type="button" id="btn-settings" class="btn btn--icon" data-i18n="settings" data-i18n-attr="aria-label,title">' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
           '</button>' +
-          '<button type="button" id="btn-theme" class="btn btn--icon" aria-label="Toggle dark mode" title="Toggle dark mode">&#9728;</button>' +
+          '<button type="button" id="btn-lang" class="btn btn--icon" data-i18n="switch_lang" data-i18n-attr="aria-label,title">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>' +
+          '</button>' +
+          '<button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">&#9728;</button>' +
         '</div>' +
       '</header>' +
       '<main>' +
         '<section class="panel" id="panel-source">' +
           '<div class="find-replace-bar" id="find-replace-bar">' +
             '<div class="find-replace-row">' +
-              '<input type="text" id="find-input" placeholder="Find" aria-label="Find" />' +
+              '<input type="text" id="find-input" data-i18n="find" data-i18n-attr="placeholder,aria-label" />' +
               '<div class="fr-controls" id="fr-controls-find">' +
                 '<span class="find-replace-info" id="find-info"></span>' +
-                '<button type="button" id="btn-find-prev" class="btn-fr" title="Previous (Shift+Enter)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>' +
-                '<button type="button" id="btn-find-next" class="btn-fr" title="Next (Enter)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>' +
-                '<label title="Case sensitive"><input type="checkbox" id="find-case" /> Aa</label>' +
-                '<label title="Regex"><input type="checkbox" id="find-regex" /> .*</label>' +
-                '<button type="button" id="btn-find-toggle-replace" class="btn-fr" title="Toggle replace"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>' +
-                '<button type="button" class="btn-fr btn-close" id="btn-find-close" title="Close (Esc)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
+                '<button type="button" id="btn-find-prev" class="btn-fr" data-i18n="previous" data-i18n-attr="title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>' +
+                '<button type="button" id="btn-find-next" class="btn-fr" data-i18n="next" data-i18n-attr="title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>' +
+                '<label data-i18n="case_sensitive" data-i18n-attr="title"><input type="checkbox" id="find-case" /> Aa</label>' +
+                '<label data-i18n="regex" data-i18n-attr="title"><input type="checkbox" id="find-regex" /> .*</label>' +
+                '<button type="button" id="btn-find-toggle-replace" class="btn-fr" data-i18n="toggle_replace" data-i18n-attr="title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>' +
+                '<button type="button" class="btn-fr btn-close" id="btn-find-close" data-i18n="close" data-i18n-attr="title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
               '</div>' +
             '</div>' +
             '<div class="find-replace-row" id="replace-row" style="display:none;">' +
-              '<input type="text" id="replace-input" placeholder="Replace" aria-label="Replace" />' +
+              '<input type="text" id="replace-input" data-i18n="replace" data-i18n-attr="placeholder,aria-label" />' +
               '<div class="fr-controls" id="fr-controls-replace">' +
                 '<span class="find-replace-info"></span>' +
-                '<button type="button" id="btn-replace-one" class="btn-fr" title="Replace"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg></button>' +
-                '<button type="button" id="btn-replace-all" class="btn-fr" title="Replace all"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M17 21l4-4-4-4"/><path d="M3 13v2a4 4 0 0 0 4 4h14"/></svg></button>' +
-                '<button type="button" id="btn-escape-replace" class="btn-fr" title="Replace escape sequences (\\n, \\t, etc.)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><polyline points="10 12 12 14 14 12"/></svg></button>' +
+                '<button type="button" id="btn-replace-one" class="btn-fr" data-i18n="replace_one" data-i18n-attr="title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg></button>' +
+                '<button type="button" id="btn-replace-all" class="btn-fr" data-i18n="replace_all" data-i18n-attr="title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M17 21l4-4-4-4"/><path d="M3 13v2a4 4 0 0 0 4 4h14"/></svg></button>' +
+                '<button type="button" id="btn-escape-replace" class="btn-fr" data-i18n="replace_escape" data-i18n-attr="title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><polyline points="10 12 12 14 14 12"/></svg></button>' +
               '</div>' +
             '</div>' +
           '</div>' +
-          '<label for="source">Markdown source</label>' +
-          '<textarea id="source" spellcheck="false" aria-label="Markdown source"></textarea>' +
+          '<label for="source" data-i18n="markdown_source">Markdown source</label>' +
+          '<textarea id="source" spellcheck="false" data-i18n="markdown_source" data-i18n-attr="aria-label"></textarea>' +
         '</section>' +
         '<div class="resizer" id="resizer"></div>' +
         '<section class="panel" id="panel-preview">' +
-          '<label for="preview-wrap">Preview</label>' +
+          '<label for="preview-wrap" data-i18n="preview_label">Preview</label>' +
           '<div id="preview-wrap" tabindex="-1">' +
             '<article id="preview"></article>' +
           '</div>' +
@@ -2506,22 +2596,22 @@ main.single-panel .resizer { display: none; }
         '<div class="settings-dialog__aligner">' +
         '<div class="settings-dialog__panel">' +
           '<div class="settings-dialog__header">' +
-            '<h2 id="settings-dialog-title" class="settings-dialog__title">Settings</h2>' +
-            '<button type="button" id="btn-settings-close" class="btn btn--icon" aria-label="Close settings">&times;</button>' +
+            '<h2 id="settings-dialog-title" class="settings-dialog__title" data-i18n="settings_title">Settings</h2>' +
+            '<button type="button" id="btn-settings-close" class="btn btn--icon" data-i18n="close_settings" data-i18n-attr="aria-label">&times;</button>' +
           '</div>' +
           '<div class="settings-dialog__body">' +
             '<label class="settings-row settings-row--switch" for="fit-width">' +
-              '<span class="settings-row__label">Fit to Width</span>' +
+              '<span class="settings-row__label" data-i18n="fit_width">Fit to Width</span>' +
               '<input type="checkbox" id="fit-width" checked />' +
             '</label>' +
             '<label class="settings-row settings-row--switch" for="tab2spaces">' +
-              '<span class="settings-row__label">Convert Tabs to Spaces</span>' +
+              '<span class="settings-row__label" data-i18n="convert_tabs">Convert Tabs to Spaces</span>' +
               '<input type="checkbox" id="tab2spaces" checked />' +
             '</label>' +
             '<div class="settings-row" role="group" aria-labelledby="tab-size-label">' +
-              '<span id="tab-size-label" class="settings-row__label">Tab Size</span>' +
+              '<span id="tab-size-label" class="settings-row__label" data-i18n="tab_size">Tab Size</span>' +
               '<div class="settings-row__control">' +
-                '<select id="tab-spaces-num" aria-labelledby="tab-size-label" aria-label="Tab size">' +
+                '<select id="tab-spaces-num" aria-labelledby="tab-size-label" data-i18n="tab_size" data-i18n-attr="aria-label">' +
                   '<option value="2">2</option>' +
                   '<option value="3">3</option>' +
                   '<option value="4" selected>4</option>' +
@@ -2531,9 +2621,9 @@ main.single-panel .resizer { display: none; }
               '</div>' +
             '</div>' +
             '<div class="settings-row" role="group" aria-labelledby="image-format-label">' +
-              '<span id="image-format-label" class="settings-row__label">Image Format</span>' +
+              '<span id="image-format-label" class="settings-row__label" data-i18n="image_format">Image Format</span>' +
               '<div class="settings-row__control">' +
-                '<select id="uml-format" aria-labelledby="image-format-label" aria-label="Diagram image format">' +
+                '<select id="uml-format" aria-labelledby="image-format-label" data-i18n="image_format" data-i18n-attr="aria-label">' +
                   '<option value="svg" selected>SVG</option>' +
                   '<option value="png">PNG</option>' +
                 '</select>' +
@@ -2583,11 +2673,18 @@ main.single-panel .resizer { display: none; }
       e.stopPropagation();
     });
 
+    // ── Language toggle ──
+    var btnLang = document.getElementById("btn-lang");
+    btnLang.addEventListener("click", function() {
+      setLocale(currentLocale === "en" ? "zh" : "en");
+    });
+    applyI18n();
+
     // ── Theme toggle ──
     function applyTheme(dark) {
       document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
       btnTheme.textContent = dark ? "\u263E" : "\u2600";
-      btnTheme.title = dark ? "Switch to light mode" : "Switch to dark mode";
+      btnTheme.title = dark ? t("switch_to_light") : t("switch_to_dark");
     }
 
     (function initTheme() {
@@ -2773,7 +2870,7 @@ main.single-panel .resizer { display: none; }
         } catch (ePlant) {
           var msgPlant = ePlant && ePlant.message ? ePlant.message : String(ePlant);
           preview.innerHTML = DOMPurify.sanitize(
-            '<article class="preview-plantuml-file"><p class="plantuml-error">PlantUML encode error: ' +
+            '<article class="preview-plantuml-file"><p class="plantuml-error">' + t("plantuml_error") + ': ' +
               escapeHtml(msgPlant) +
               "</p></article>",
             sanitizeOptsPlant
@@ -2952,7 +3049,7 @@ main.single-panel .resizer { display: none; }
           mermaid.render("mermaid-svg-" + seq + "-" + i, item.source).then(function(result) {
             el.innerHTML = result.svg;
           }).catch(function(e) {
-            el.innerHTML = '<p class="mermaid-error">Mermaid error: ' + escapeHtml(e.message || String(e)) + '</p>';
+            el.innerHTML = '<p class="mermaid-error">' + t("mermaid_error") + ': ' + escapeHtml(e.message || String(e)) + '</p>';
           });
         });
       }
@@ -3072,7 +3169,7 @@ main.single-panel .resizer { display: none; }
 
     async function bindWorkspaceFromPicker() {
       if (!window.showDirectoryPicker) {
-        alert("Folder linking is not available in this browser. Try Chrome or Edge.");
+        alert(t("folder_link_unavailable"));
         return false;
       }
       try {
@@ -3081,7 +3178,7 @@ main.single-panel .resizer { display: none; }
         if (fileHandle) {
           var segsBind = await dir.resolve(fileHandle);
           if (!segsBind) {
-            alert("That folder does not contain the file you have open. Pick a parent folder (for example your project root) that contains this file.");
+            alert(t("folder_not_contain"));
             return false;
           }
           workspaceRootHandle = dir;
@@ -3092,7 +3189,7 @@ main.single-panel .resizer { display: none; }
         }
         workspaceRootHandle = dir;
         currentRelPathInWorkspace = null;
-        alert("Folder linked. Use Open file — the dialog will start in this folder.");
+        alert(t("folder_linked"));
         return true;
       } catch (e) {
         if (e.name !== "AbortError") console.error(e);
@@ -3102,11 +3199,11 @@ main.single-panel .resizer { display: none; }
 
     async function ensureWorkspaceForRelativeLinks() {
       if (!browserSupportsFileSystemAccessPickers()) {
-        alert("Opening linked local files is not available in this browser. Firefox and Safari do not implement the File System Access API (file handles and folder linking). Use Chrome, Edge, or another Chromium-based browser for this feature.");
+        alert(t("open_linked_unsupported"));
         return false;
       }
       if (!fileHandle) {
-        alert('Use the "Open file" button and pick your document in the system file dialog. That is required so the app receives a file handle.');
+        alert(t("open_file_hint"));
         return false;
       }
       if (workspaceRootHandle) {
@@ -3121,15 +3218,11 @@ main.single-panel .resizer { display: none; }
         } catch (e) {
           console.warn(e);
         }
-        var relink = confirm(
-          "The file you have open is not inside your linked folder.\n\nClick OK to open the folder picker and choose a folder that contains this file. Click Cancel to stop.",
-        );
+        var relink = confirm(t("relink_prompt"));
         if (!relink) return false;
         return await bindWorkspaceFromPicker();
       }
-      var proceed = confirm(
-        "Link a folder so relative file links can be resolved.\n\nClick OK to open the system folder picker now and choose a folder that contains your current file. Click Cancel to try later (you can also drag a project folder onto the page).",
-      );
+      var proceed = confirm(t("link_folder_prompt"));
       if (!proceed) return false;
       return await bindWorkspaceFromPicker();
     }
@@ -3178,14 +3271,14 @@ main.single-panel .resizer { display: none; }
         await idbPutFileHandle(id, targetHandle);
       } catch (e) {
         console.error(e);
-        alert("Could not stage the file for a new window (IndexedDB may be unavailable).");
+        alert(t("stage_file_error"));
         return;
       }
       var url = new URL(window.location.href);
       url.searchParams.set("mdvOpen", id);
       var child = window.open(url.toString(), "_blank");
       if (!child) {
-        var useHere = confirm("Popup blocked. Open the linked file in this window instead?");
+        var useHere = confirm(t("popup_blocked"));
         if (useHere) await applyFileHandleOpen(targetHandle);
       }
     }
@@ -3193,9 +3286,9 @@ main.single-panel .resizer { display: none; }
     previewWrap.addEventListener(
       "click",
       function(e) {
-        var t = e.target;
-        if (!t || !t.closest) return;
-        var copyBtn = t.closest(".code-block__copy");
+        var tgt = e.target;
+        if (!tgt || !tgt.closest) return;
+        var copyBtn = tgt.closest(".code-block__copy");
         if (copyBtn && preview.contains(copyBtn)) {
           e.preventDefault();
           e.stopPropagation();
@@ -3206,19 +3299,19 @@ main.single-panel .resizer { display: none; }
           navigator.clipboard.writeText(text).then(
             function() {
               copyBtn.setAttribute("data-copied", "");
-              copyBtn.setAttribute("aria-label", "Copied");
+              copyBtn.setAttribute("aria-label", t("copied"));
               setTimeout(function() {
                 copyBtn.removeAttribute("data-copied");
-                copyBtn.setAttribute("aria-label", "Copy code");
+                copyBtn.setAttribute("aria-label", t("copy_code"));
               }, 2000);
             },
             function() {
-              alert("Could not copy to clipboard.");
+              alert(t("copy_failed"));
             }
           );
           return;
         }
-        var el = t.closest("a[href]");
+        var el = tgt.closest("a[href]");
         if (!el || !preview.contains(el)) return;
         var href = el.getAttribute("href");
         if (!href || href.startsWith("#")) return;
@@ -3235,14 +3328,14 @@ main.single-panel .resizer { display: none; }
             var pathPart = href.split("#")[0] || "";
             var resolved = resolveRelativeLinkToWorkspacePath(base, pathPart);
             if (!resolved) {
-              alert("Could not resolve that link path from the current file.");
+              alert(t("link_unresolved"));
               return;
             }
             var target = await getFileHandleForRelativePath(workspaceRootHandle, resolved);
             await openLinkedFileInNewWindow(target);
           } catch (err) {
             console.error(err);
-            alert("Could not open the linked file. Check that the path exists and stays inside the folder you granted access to.");
+            alert(t("linked_file_error"));
           }
         })();
       },
@@ -3333,7 +3426,7 @@ main.single-panel .resizer { display: none; }
       if (!fileHandle) return;
 
       if (isContentModified()) {
-        var confirmed = confirm("You have unsaved changes. Reopen will discard them. Continue?");
+        var confirmed = confirm(t("unsaved_changes_reopen"));
         if (!confirmed) return;
       }
 
@@ -3371,7 +3464,7 @@ main.single-panel .resizer { display: none; }
           try {
             formatted = JSON.stringify(JSON.parse(source.value), null, 2);
           } catch (e) {
-            alert("Invalid JSON — cannot format.");
+            alert(t("invalid_json"));
             return;
           }
           break;
@@ -3438,7 +3531,7 @@ main.single-panel .resizer { display: none; }
 
       // Try to save directly to original file (File System Access API)
       if (fileHandle) {
-        var confirmed = confirm('Save changes to "' + currentFileName + '"?');
+        var confirmed = confirm(t("save_changes_prefix") + currentFileName + t("save_changes_suffix"));
         if (!confirmed) return;
 
         try {
@@ -3559,7 +3652,7 @@ main.single-panel .resizer { display: none; }
             updateFilenameDisplay();
             updateReopenButton();
             scheduleRender();
-            alert("Project folder linked. Use Open file to choose a file inside this folder.");
+            alert(t("folder_linked_confirm"));
             return;
           }
           if (handle && handle.kind === "file") {
@@ -3680,7 +3773,7 @@ main.single-panel .resizer { display: none; }
 
       function updateMatchInfo() {
         if (matches.length === 0) {
-          findInfo.textContent = findInput.value ? "No matches" : "";
+          findInfo.textContent = findInput.value ? t("no_matches") : "";
         } else {
           findInfo.textContent = (currentMatchIndex + 1) + "/" + matches.length;
         }
