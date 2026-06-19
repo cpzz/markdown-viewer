@@ -15,6 +15,8 @@
   --border: rgba(0, 0, 0, 0.1);
   --surface: #ffffff;
   --surface-code: #f0f0f2;
+  --bg-code: #2d2d2d;
+  --bg-diagram: #fafbfc;
   --nav-bg: rgba(255, 255, 255, 0.72);
   --shadow: rgba(0, 0, 0, 0.22) 0px 3px 30px 0px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -35,6 +37,8 @@
     --border: rgba(255, 255, 255, 0.12);
     --surface: #1d1d1f;
     --surface-code: #161617;
+    --bg-code: #161b22;
+    --bg-diagram: #1a1d23;
     --nav-bg: rgba(0, 0, 0, 0.8);
   }
 }
@@ -48,6 +52,8 @@ html[data-theme="dark"] {
   --border: rgba(255, 255, 255, 0.12);
   --surface: #1d1d1f;
   --surface-code: #161617;
+  --bg-code: #161b22;
+  --bg-diagram: #1a1d23;
   --nav-bg: rgba(0, 0, 0, 0.8);
 }
 * { box-sizing: border-box; }
@@ -422,6 +428,8 @@ main.single-panel .resizer { display: none; }
   border-radius: 6px;
   border: 1px solid var(--border);
   font-size: 0.8125rem;
+  background: var(--bg-code);
+  color: #ccc;
 }
 #preview code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
 
@@ -468,7 +476,7 @@ main.single-panel .resizer { display: none; }
   padding: 0.75rem;
   border: none;
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--bg-diagram);
   overflow: auto;
 }
 .plantuml-block img { max-width: none; }
@@ -484,7 +492,7 @@ main.single-panel .resizer { display: none; }
   padding: 0.75rem;
   border: none;
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--bg-diagram);
   overflow: auto;
   text-align: center;
 }
