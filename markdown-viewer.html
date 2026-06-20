@@ -857,6 +857,10 @@ main.single-panel .resizer { display: none; }
       if (attrs) { attrs.split(",").forEach(function(a) { a = a.trim(); if (a) el.setAttribute(a, text); }); }
       else { el.textContent = text; }
     });
+    var btnSource = document.getElementById("btn-toggle-source");
+    if (btnSource) btnSource.title = t("source");
+    var btnPreview = document.getElementById("btn-toggle-preview");
+    if (btnPreview) btnPreview.title = t("preview");
   }
   function setLocale(lang) { currentLocale = lang; localStorage.setItem("locale", lang); applyI18n(); }
   /* ── end i18n ─────────────────────────────────────────────────── */

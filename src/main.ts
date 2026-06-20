@@ -153,6 +153,11 @@ function applyI18n(): void {
       el.textContent = text;
     }
   });
+  // Update source/preview button titles (set statically at build time)
+  const btnSource = document.querySelector<HTMLButtonElement>("#btn-toggle-source");
+  if (btnSource) btnSource.title = _t("source");
+  const btnPreview = document.querySelector<HTMLButtonElement>("#btn-toggle-preview");
+  if (btnPreview) btnPreview.title = _t("preview");
 }
 
 function setLocale(lang: Locale): void {
