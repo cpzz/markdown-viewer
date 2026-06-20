@@ -399,9 +399,11 @@ main.single-panel .resizer { display: none; }
   margin: 1em 0;
 }
 .code-block__toolbar {
+  position: absolute;
+  bottom: 0.25rem;
+  right: 0.25rem;
   display: flex;
-  justify-content: flex-end;
-  padding: 0 0.25rem 0.25rem 0;
+  z-index: 1;
 }
 .code-block__toolbar .code-block__copy.btn--icon {
   width: 24px;
@@ -409,7 +411,8 @@ main.single-panel .resizer { display: none; }
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg, #fff);
+  background: var(--bg-code);
+  color: rgba(255, 255, 255, 0.7);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 #preview .code-block-wrap pre {
