@@ -492,7 +492,6 @@ main.single-panel .resizer { display: none; }
   border-bottom: 2px solid var(--fg);
   font-weight: 600;
   font-size: 0.75rem;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--fg-secondary);
 }
