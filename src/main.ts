@@ -2908,7 +2908,11 @@ function mount(): void {
     // Render Mermaid diagrams via mermaid.render() → SVG string approach (reliable across themes)
     if (mermaidQueue.length > 0) {
       const mermaid = await ensureMermaid();
-      mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: getMermaidTheme(),
+        themeVariables: { edgeLabelBackground: getMermaidTheme() === "dark" ? "#1a1d23" : "#fafbfc" },
+      });
       const seq = ++mermaidRenderSeq;
       for (let i = 0; i < mermaidQueue.length; i++) {
         const item = mermaidQueue[i];

@@ -3108,7 +3108,11 @@ html[data-theme="dark"] .plantuml-block img {
       // Render Mermaid diagrams
       if (mermaidQueue.length > 0 && window.__mermaid) {
         var mermaid = window.__mermaid;
-        mermaid.initialize({ startOnLoad: false, theme: getMermaidTheme() });
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: getMermaidTheme(),
+          themeVariables: { edgeLabelBackground: getMermaidTheme() === "dark" ? "#1a1d23" : "#fafbfc" },
+        });
         var seq = ++mermaidRenderSeq;
         var queue = mermaidQueue.slice();
         queue.forEach(function(item, i) {
