@@ -15,7 +15,7 @@
   --border: rgba(0, 0, 0, 0.1);
   --surface: #ffffff;
   --surface-code: #f0f0f2;
-  --bg-code: #2d2d2d;
+  --bg-code: #f4f5f7;
   --bg-diagram: #fafbfc;
   --nav-bg: rgba(255, 255, 255, 0.72);
   --shadow: rgba(0, 0, 0, 0.22) 0px 3px 30px 0px;
@@ -412,7 +412,7 @@ main.single-panel .resizer { display: none; }
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-code);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--fg-muted);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 #preview .code-block-wrap pre {
@@ -437,9 +437,60 @@ main.single-panel .resizer { display: none; }
   border: 1px solid var(--border);
   font-size: 0.8125rem;
   background: var(--bg-code);
-  color: #ccc;
+  color: var(--fg);
 }
 #preview code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+
+/* Prism syntax highlighting – light mode overrides (prism-tomorrow is dark by default) */
+html:not([data-theme="dark"]) code[class*="language-"],
+html:not([data-theme="dark"]) pre[class*="language-"] {
+  color: #24292e;
+}
+html:not([data-theme="dark"]) .token.comment,
+html:not([data-theme="dark"]) .token.prolog,
+html:not([data-theme="dark"]) .token.doctype,
+html:not([data-theme="dark"]) .token.cdata {
+  color: #6a737d;
+}
+html:not([data-theme="dark"]) .token.punctuation {
+  color: #393a34;
+}
+html:not([data-theme="dark"]) .token.property,
+html:not([data-theme="dark"]) .token.tag,
+html:not([data-theme="dark"]) .token.boolean,
+html:not([data-theme="dark"]) .token.number,
+html:not([data-theme="dark"]) .token.constant,
+html:not([data-theme="dark"]) .token.symbol,
+html:not([data-theme="dark"]) .token.deleted {
+  color: #d73a49;
+}
+html:not([data-theme="dark"]) .token.selector,
+html:not([data-theme="dark"]) .token.attr-name,
+html:not([data-theme="dark"]) .token.string,
+html:not([data-theme="dark"]) .token.char,
+html:not([data-theme="dark"]) .token.builtin,
+html:not([data-theme="dark"]) .token.inserted {
+  color: #032f62;
+}
+html:not([data-theme="dark"]) .token.operator,
+html:not([data-theme="dark"]) .token.entity,
+html:not([data-theme="dark"]) .token.url {
+  color: #d73a49;
+}
+html:not([data-theme="dark"]) .token.atrule,
+html:not([data-theme="dark"]) .token.attr-value,
+html:not([data-theme="dark"]) .token.keyword {
+  color: #d73a49;
+}
+html:not([data-theme="dark"]) .token.function,
+html:not([data-theme="dark"]) .token.class-name {
+  color: #6f42c1;
+}
+html:not([data-theme="dark"]) .token.regex,
+html:not([data-theme="dark"]) .token.important,
+html:not([data-theme="dark"]) .token.variable {
+  color: #e36209;
+}
 
 /* Tables */
 #preview table {
