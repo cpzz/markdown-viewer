@@ -538,6 +538,17 @@ html:not([data-theme="dark"]) .token.variable {
   overflow: auto;
 }
 .plantuml-block img { max-width: none; }
+
+/* PlantUML dark mode: invert image colors so white background → dark, dark text → light */
+html[data-theme="dark"] .plantuml-block img {
+  filter: invert(1) hue-rotate(180deg);
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .plantuml-block img {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
 .plantuml-block figcaption { margin-top: 0.5rem; font-size: 0.6875rem; color: var(--fg-muted); }
 .plantuml-block a { color: var(--accent-link); }
 .plantuml-block:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
