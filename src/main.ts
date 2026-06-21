@@ -2911,7 +2911,7 @@ function mount(): void {
       mermaid.initialize({
         startOnLoad: false,
         theme: getMermaidTheme(),
-        themeVariables: { edgeLabelBackground: getMermaidTheme() === "dark" ? "#1a1d23" : "#fafbfc" },
+        themeVariables: { edgeLabelBackground: getMermaidTheme() === "dark" ? "#000000" : "#ffffff" },
       });
       const seq = ++mermaidRenderSeq;
       for (let i = 0; i < mermaidQueue.length; i++) {

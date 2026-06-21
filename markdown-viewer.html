@@ -15,8 +15,8 @@
   --border: rgba(0, 0, 0, 0.1);
   --surface: #ffffff;
   --surface-code: #f0f0f2;
-  --bg-code: #f4f5f7;
-  --bg-diagram: #fafbfc;
+  --bg-code: #ffffff;
+  --bg-diagram: #ffffff;
   --nav-bg: rgba(255, 255, 255, 0.72);
   --shadow: rgba(0, 0, 0, 0.22) 0px 3px 30px 0px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -37,8 +37,8 @@
     --border: rgba(255, 255, 255, 0.12);
     --surface: #1d1d1f;
     --surface-code: #161617;
-    --bg-code: #161b22;
-    --bg-diagram: #1a1d23;
+    --bg-code: #000000;
+    --bg-diagram: #000000;
     --nav-bg: rgba(0, 0, 0, 0.8);
   }
 }
@@ -52,8 +52,8 @@ html[data-theme="dark"] {
   --border: rgba(255, 255, 255, 0.12);
   --surface: #1d1d1f;
   --surface-code: #161617;
-  --bg-code: #161b22;
-  --bg-diagram: #1a1d23;
+  --bg-code: #000000;
+  --bg-diagram: #000000;
   --nav-bg: rgba(0, 0, 0, 0.8);
 }
 * { box-sizing: border-box; }
@@ -3111,7 +3111,7 @@ html[data-theme="dark"] .plantuml-block img {
         mermaid.initialize({
           startOnLoad: false,
           theme: getMermaidTheme(),
-          themeVariables: { edgeLabelBackground: getMermaidTheme() === "dark" ? "#1a1d23" : "#fafbfc" },
+          themeVariables: { edgeLabelBackground: getMermaidTheme() === "dark" ? "#000000" : "#ffffff" },
         });
         var seq = ++mermaidRenderSeq;
         var queue = mermaidQueue.slice();
