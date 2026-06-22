@@ -8,6 +8,7 @@
   --border: rgba(0, 0, 0, 0.1);
   --surface: #ffffff;
   --surface-code: #f0f0f2;
+  --fg-code: #0550ae;
   --bg-code: #ffffff;
   --bg-diagram: #ffffff;
   --nav-bg: rgba(255, 255, 255, 0.72);
@@ -30,6 +31,7 @@ html[data-theme="dark"] {
   --border: rgba(255, 255, 255, 0.12);
   --surface: #000000;
   --surface-code: #161617;
+  --fg-code: #79c0ff;
   --bg-code: #000000;
   --bg-diagram: #000000;
   --nav-bg: rgba(0, 0, 0, 0.8);
@@ -46,6 +48,7 @@ html[data-theme="dark"] {
     --border: rgba(255, 255, 255, 0.12);
     --surface: #000000;
     --surface-code: #161617;
+    --fg-code: #79c0ff;
     --bg-code: #161b22;
     --bg-diagram: #1a1d23;
     --nav-bg: rgba(0, 0, 0, 0.8);
@@ -474,6 +477,13 @@ main.single-panel .resizer { display: none; }
 }
 
 #preview code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+#preview :not(pre) > code {
+  background: var(--surface-code);
+  color: var(--fg-code);
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  font-size: 0.875em;
+}
 
 /* Prism syntax highlighting – light mode overrides (prism-tomorrow is dark by default) */
 html:not([data-theme="dark"]) code[class*="language-"],
