@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "start": "vite preview"
+    "start": "vite preview",
+    "webview2:dev": "dotnet run --project webview2 -r win-x64 -- --dev",
+    "webview2:build": "npm run build && dotnet publish webview2 -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist/webview2"
   },
   "dependencies": {
     "dompurify": "^3.2.4",

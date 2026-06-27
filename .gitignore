@@ -24,3 +24,8 @@ npm-debug.log*
 # Local env files
 .env
 .env.local
+
+
+# WebView2
+webview2/bin/
+webview2/obj/

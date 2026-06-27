@@ -53,6 +53,36 @@ npm start
 - **Node.js 20+**（LTS 版本即可）。**Node.js 22+** 为可选但推荐版本：可避免来自传递依赖（`chevrotain@12`，由 Mermaid 11 的解析器栈引入）的 `npm warn EBADENGINE` 警告。该警告不会阻止在 Node 20 上的安装或构建。
 - 网络连接
 
+### WebView2 桌面应用（仅 Windows）
+
+基于 WinUI 3 (Windows App SDK) 的原生桌面应用，支持 Windows 11 Mica 背景效果：
+
+```bash
+# 开发模式（连接 Vite 开发服务器）
+npm run webview2:dev
+
+# 构建生产版本（自包含单文件，无需 .NET 运行时）
+npm run webview2:build
+```
+
+构建产物位于 `dist/webview2/`，运行 `MarkdownViewer.exe` 即可。
+
+环境要求：
+- Node.js 20+（同上）
+- **.NET 10 SDK**（[下载](https://dotnet.microsoft.com/download/dotnet/10.0)）
+- 系统已安装 WebView2 Runtime（Windows 10/11 已预装）
+
+Windows 快速安装依赖：
+
+```bash
+winget install OpenJS.NodeJS.LTS
+winget install Microsoft.DotNet.SDK.10
+```
+
+限制：
+- 仅支持 Windows 平台
+- 产物为 `MarkdownViewer.exe` + `dist/` 文件夹，非单个可执行文件
+
 ## 使用说明
 
 ### 加载文件
@@ -210,6 +240,7 @@ markdown-plantuml-viewer/
 │   ├── style.css           # 样式
 │   ├── plantuml-encoder.d.ts
 │   └── file-system-access.d.ts
+├── webview2/               # WebView2 桌面应用源码（仅 Windows）
 ├── dist/                   # 构建输出（自动生成）
 └── node_modules/           # 依赖（自动生成）
 ```

@@ -118,6 +118,17 @@ header {
   display: flex;
   align-items: center;
   gap: 1rem;
+  -webkit-app-region: drag;
+}
+
+header input,
+header button,
+header select {
+  -webkit-app-region: no-drag;
+}
+
+.webview2 header .controls-spacer {
+  display: none;
 }
 
 header h1 {
@@ -129,8 +140,8 @@ header h1 {
 }
 
 .app-icon {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
 }
 

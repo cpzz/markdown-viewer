@@ -50,8 +50,38 @@ npm start
 ```
 
 Requirements:
-- **Node.js 20+** (LTS is fine). **Node.js 22+** is optional but recommended: it avoids an `npm warn EBADENGINE` message from a transitive dependency (`chevrotain@12`, pulled in by Mermaid 11’s parser stack). The warning does not block install or builds on Node 20.
+- **Node.js 20+** (LTS is fine). **Node.js 22+** is optional but recommended: it avoids an `npm warn EBADENGINE` message from a transitive dependency (`chevrotain@12`, pulled in by Mermaid 11's parser stack). The warning does not block install or builds on Node 20.
 - Internet connection
+
+### WebView2 Desktop App (Windows Only)
+
+A native desktop app built with WinUI 3 (Windows App SDK), featuring Windows 11 Mica backdrop effect:
+
+```bash
+# Development mode (connects to Vite dev server)
+npm run webview2:dev
+
+# Build for production (self-contained single file, no .NET runtime required)
+npm run webview2:build
+```
+
+The build output is located in `dist/webview2/`. Run `MarkdownViewer.exe` to launch.
+
+Requirements:
+- Node.js 20+ (same as above)
+- **.NET 10 SDK** ([download](https://dotnet.microsoft.com/download/dotnet/10.0))
+- WebView2 Runtime installed on the system (pre-installed on Windows 10/11)
+
+Quick install dependencies on Windows:
+
+```bash
+winget install OpenJS.NodeJS.LTS
+winget install Microsoft.DotNet.SDK.10
+```
+
+Limitations:
+- Windows only
+- The output is `MarkdownViewer.exe` + `dist/` folder, not a single executable
 
 
 ## Usage
@@ -211,6 +241,7 @@ markdown-plantuml-viewer/
 │   ├── style.css           # Styles
 │   ├── plantuml-encoder.d.ts
 │   └── file-system-access.d.ts
+├── webview2/               # WebView2 desktop app source (Windows only)
 ├── dist/                   # Build output (generated)
 └── node_modules/           # Dependencies (generated)
 ```

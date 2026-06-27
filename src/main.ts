@@ -2133,7 +2133,7 @@ function mount(): void {
 
   app.innerHTML = `
     <header>
-      <img src="/icon.png" alt="" class="app-icon"><h1 data-i18n="app_title">Markdown Viewer</h1>
+      <img src="/logo.png" alt="" class="app-icon" id="app-logo"><h1 data-i18n="app_title">Markdown Viewer</h1>
       <div class="controls">
         <input type="file" id="file-open" multiple hidden />
         <button type="button" id="btn-workspace" class="btn btn--icon toggle" data-i18n="workspace" data-i18n-attr="aria-label,title" title="${_t("workspace")}">
@@ -2533,12 +2533,22 @@ function mount(): void {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     btnTheme.textContent = dark ? "\u263E" : "\u2600";
     btnTheme.title = dark ? _t("switch_to_light") : _t("switch_to_dark");
+    const appLogo = document.querySelector<HTMLImageElement>("#app-logo");
+    if (appLogo) appLogo.src = dark ? "/logo-night.png" : "/logo.png";
+  }
+
+  function applySystemFavicon(): void {
+    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const favicon = document.querySelector<HTMLLinkElement>("#favicon");
+    if (favicon) favicon.href = isDark ? "/logo-night.png" : "/logo.png";
   }
 
   (function initTheme(): void {
     const stored = localStorage.getItem("md-viewer-theme");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     applyTheme(stored ? stored === "dark" : prefersDark);
+    applySystemFavicon();
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applySystemFavicon);
   })();
 
   btnTheme.addEventListener("click", () => {
@@ -3835,5 +3845,7 @@ function mount(): void {
     void render();
   })();
 }
+
+if (new URLSearchParams(location.search).has("webview2")) document.documentElement.classList.add("webview2");
 
 mount();
