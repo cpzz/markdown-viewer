@@ -68,6 +68,19 @@ const I18N: Record<Locale, Record<string, string>> = {
       "Link a folder so relative file links can be resolved.\n\nClick OK to open the system folder picker now and choose a folder that contains your current file. Click Cancel to try later (you can also drag a project folder onto the page).",
     switch_to_light: "Switch to light mode",
     switch_to_dark: "Switch to dark mode",
+    workspace: "Workspace",
+    add_file: "Add file",
+    add_directory: "Add directory",
+    remove_from_workspace: "Remove from workspace",
+    open_workspace_file: "Open workspace file",
+    workspace_empty: "No files in workspace",
+    open_directory: "Open directory",
+    workspace_save: "Save workspace",
+    workspace_load: "Load workspace",
+    workspace_saved: "Workspace saved",
+    workspace_loaded: "Workspace loaded",
+    workspace_save_error: "Failed to save workspace",
+    workspace_load_error: "Failed to load workspace",
   },
   zh: {
     app_title: "Markdown \u67e5\u770b\u5668",
@@ -129,6 +142,19 @@ const I18N: Record<Locale, Record<string, string>> = {
       "\u5173\u8054\u6587\u4ef6\u5939\u4ee5\u89e3\u6790\u76f8\u5bf9\u94fe\u63a5\u3002\n\n\u70b9\u51fb\u201c\u786e\u5b9a\u201d\u6253\u5f00\u7cfb\u7edf\u6587\u4ef6\u5939\u9009\u62e9\u5668\uff0c\u9009\u62e9\u5305\u542b\u5f53\u524d\u6587\u4ef6\u7684\u6587\u4ef6\u5939\u3002\u70b9\u51fb\u201c\u53d6\u6d88\u201d\u7a0d\u540e\u518d\u8bd5\uff08\u4e5f\u53ef\u4ee5\u5c06\u9879\u76ee\u6587\u4ef6\u5939\u62d6\u5230\u9875\u9762\u4e0a\uff09\u3002",
     switch_to_light: "\u5207\u6362\u5230\u6d45\u8272\u6a21\u5f0f",
     switch_to_dark: "\u5207\u6362\u5230\u6df1\u8272\u6a21\u5f0f",
+    workspace: "工作区",
+    add_file: "添加文件",
+    add_directory: "添加目录",
+    open_directory: "打开目录",
+    remove_from_workspace: "从工作区移除",
+    open_workspace_file: "打开工作区文件",
+    workspace_empty: "工作区为空",
+    workspace_save: "保存工作区",
+    workspace_load: "加载工作区",
+    workspace_saved: "工作区已保存",
+    workspace_loaded: "工作区已加载",
+    workspace_save_error: "保存工作区失败",
+    workspace_load_error: "加载工作区失败",
   },
 };
 
@@ -2107,22 +2133,28 @@ function mount(): void {
 
   app.innerHTML = `
     <header>
-      <h1 data-i18n="app_title">Markdown Viewer</h1>
-      <p class="hint" id="filename-display"></p>
+      <img src="/icon.png" alt="" class="app-icon"><h1 data-i18n="app_title">Markdown Viewer</h1>
       <div class="controls">
-        <input type="file" id="file-open" accept=".md,.markdown,.mdown,.mkd,.puml,.plantuml,.xmind,text/markdown,text/plain" hidden />
+        <input type="file" id="file-open" multiple hidden />
+        <button type="button" id="btn-workspace" class="btn btn--icon toggle" data-i18n="workspace" data-i18n-attr="aria-label,title" title="${_t("workspace")}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </button>
         <button type="button" id="btn-open-file" class="btn btn--icon" data-i18n="open_file" data-i18n-attr="aria-label,title">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button type="button" id="btn-open-dir" class="btn btn--icon" data-i18n="open_directory" data-i18n-attr="aria-label,title" title="${_t("open_directory")}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </button>
         <button type="button" id="btn-reopen-file" class="btn btn--icon" data-i18n="reopen_file" data-i18n-attr="aria-label,title" disabled>
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
         </button>
-        <button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
-        </button>
         <button type="button" id="btn-save-file" class="btn btn--icon" data-i18n="save_file" data-i18n-attr="aria-label,title">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         </button>
+        <button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
+        </button>
+        <span class="controls-spacer"></span>
         <div class="toggle-group">
           <button type="button" id="btn-toggle-source" class="btn btn--icon toggle active" aria-pressed="true" data-i18n="show_source" data-i18n-attr="aria-label" title="${_t("source")}">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
@@ -2141,6 +2173,14 @@ function mount(): void {
       </div>
     </header>
     <main>
+      <aside class="workspace-sidebar" id="workspace-sidebar">
+        <div class="workspace-actions">
+        </div>
+        <div class="workspace-list" id="workspace-list">
+          <div class="workspace-empty" data-i18n="workspace_empty">No files in workspace</div>
+        </div>
+      </aside>
+      <div class="workspace-resizer" id="workspace-resizer"></div>
       <section class="panel" id="panel-source">
         <div class="find-replace-bar" id="find-replace-bar">
           <div class="find-replace-row">
@@ -2244,7 +2284,6 @@ function mount(): void {
   const btnFormatFile = document.querySelector<HTMLButtonElement>("#btn-format-file")!;
   const btnToggleSource = document.querySelector<HTMLButtonElement>("#btn-toggle-source")!;
   const btnTogglePreview = document.querySelector<HTMLButtonElement>("#btn-toggle-preview")!;
-  const filenameDisplay = document.querySelector<HTMLElement>("#filename-display")!;
   const fitWidthCheckbox = document.querySelector<HTMLInputElement>("#fit-width")!;
   const tab2spacesCheckbox = document.querySelector<HTMLInputElement>("#tab2spaces")!;
   const tabSpacesNum = document.querySelector<HTMLSelectElement>("#tab-spaces-num")!;
@@ -2262,6 +2301,219 @@ function mount(): void {
 
   btnLang.addEventListener("click", () => setLocale(currentLocale === "en" ? "zh" : "en"));
   applyI18n();
+
+  // ── Workspace sidebar ────────────────────────────────────
+  const workspaceSidebar = document.querySelector<HTMLElement>("#workspace-sidebar")!;
+  const workspaceList = document.querySelector<HTMLElement>("#workspace-list")!;
+  const btnWorkspace = document.querySelector<HTMLButtonElement>("#btn-workspace")!;
+  const btnOpenDir = document.querySelector<HTMLButtonElement>("#btn-open-dir")!;
+
+  interface WorkspaceTreeNode {
+    name: string;
+    kind: "file" | "directory";
+    handle: FileSystemHandle;
+    children: WorkspaceTreeNode[];
+    expanded: boolean;
+  }
+
+  let workspaceTree: WorkspaceTreeNode[] = [];
+  let workspaceVisible = true;
+
+  function updateWorkspaceVisibility(): void {
+    workspaceSidebar.classList.toggle("hidden", !workspaceVisible);
+    btnWorkspace.classList.toggle("active", workspaceVisible);
+  }
+
+  function renderWorkspaceList(): void {
+    if (workspaceTree.length === 0) {
+      workspaceList.innerHTML = `<div class="workspace-empty" data-i18n="workspace_empty">${_t("workspace_empty")}</div>`;
+      return;
+    }
+    workspaceList.innerHTML = "";
+    for (const node of workspaceTree) {
+      renderTreeNode(node, 0);
+    }
+  }
+
+  function renderTreeNode(node: WorkspaceTreeNode, depth: number): void {
+    const item = document.createElement("div");
+    item.className = "workspace-item";
+    if (node.kind === "file" && fileHandle && node.handle === fileHandle) {
+      item.classList.add("active");
+    }
+    if (depth > 0) {
+      item.style.paddingLeft = `${0.75 + depth * 1}rem`;
+    }
+
+    let expandIcon = "";
+    if (node.kind === "directory") {
+      expandIcon = node.expanded
+        ? `<span class="workspace-expand-icon expanded"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>`
+        : `<span class="workspace-expand-icon"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>`;
+    }
+
+    const iconSvg = node.kind === "file"
+      ? `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`
+      : `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+    item.innerHTML = `${expandIcon}${iconSvg}<span class="workspace-item-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span><button type="button" class="workspace-item-remove" title="${_t("remove_from_workspace")}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+
+    // Clicking expand icon: toggle expand/collapse, load if needed
+    const expandEl = item.querySelector<HTMLElement>(".workspace-expand-icon");
+    if (expandEl) {
+      expandEl.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        node.expanded = !node.expanded;
+        if (node.expanded && node.children.length === 0) {
+          await scanDirectoryChildren(node);
+        }
+        renderWorkspaceList();
+      });
+    }
+
+    // Clicking item: file opens it, directory toggles expand/collapse
+    item.addEventListener("click", async (e) => {
+      if ((e.target as HTMLElement).closest(".workspace-item-remove")) return;
+      if ((e.target as HTMLElement).closest(".workspace-expand-icon")) return;
+      if (node.kind === "file") {
+        const fh = node.handle as FileSystemFileHandle;
+        await applyFileHandleOpen(fh);
+        renderWorkspaceList();
+      } else if (node.kind === "directory") {
+        node.expanded = !node.expanded;
+        if (node.expanded && node.children.length === 0) {
+          await scanDirectoryChildren(node);
+        }
+        renderWorkspaceList();
+      }
+    });
+
+    item.querySelector(".workspace-item-remove")!.addEventListener("click", () => {
+      removeTreeNode(node);
+    });
+
+    workspaceList.appendChild(item);
+
+    // Render children if expanded
+    if (node.kind === "directory" && node.expanded) {
+      for (const child of node.children) {
+        renderTreeNode(child, depth + 1);
+      }
+    }
+  }
+
+  function removeTreeNode(target: WorkspaceTreeNode): void {
+    const removeFrom = (arr: WorkspaceTreeNode[]): boolean => {
+      const idx = arr.indexOf(target);
+      if (idx !== -1) { arr.splice(idx, 1); return true; }
+      for (const node of arr) {
+        if (node.kind === "directory" && removeFrom(node.children)) return true;
+      }
+      return false;
+    };
+    removeFrom(workspaceTree);
+    renderWorkspaceList();
+  }
+
+  function addFileNode(name: string, handle: FileSystemFileHandle): void {
+    if (findNodeByHandle(workspaceTree, handle)) return;
+    workspaceTree.push({ name, kind: "file", handle, children: [], expanded: false });
+    renderWorkspaceList();
+  }
+
+  function addDirectoryNode(name: string, handle: FileSystemDirectoryHandle): WorkspaceTreeNode {
+    const existing = findNodeByHandle(workspaceTree, handle);
+    if (existing) return existing;
+    const node: WorkspaceTreeNode = { name, kind: "directory", handle, children: [], expanded: false };
+    workspaceTree.push(node);
+    renderWorkspaceList();
+    return node;
+  }
+
+  function findNodeByHandle(nodes: WorkspaceTreeNode[], handle: FileSystemHandle): WorkspaceTreeNode | null {
+    for (const node of nodes) {
+      if (node.handle === handle) return node;
+      if (node.kind === "directory") {
+        const found = findNodeByHandle(node.children, handle);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  async function scanDirectoryChildren(parentNode: WorkspaceTreeNode): Promise<void> {
+    const dir = parentNode.handle as FileSystemDirectoryHandle;
+    try {
+      const dirAny = dir as any;
+      const entriesMethod = dirAny.entries || dirAny.values;
+      if (!entriesMethod) return;
+      parentNode.children = [];
+      for await (const item of entriesMethod.call(dirAny)) {
+        const name: string = Array.isArray(item) ? item[0] : item.name;
+        const handle: FileSystemHandle = Array.isArray(item) ? item[1] : item;
+        if (handle.kind === "file") {
+          parentNode.children.push({ name, kind: "file", handle, children: [], expanded: false });
+        } else if (handle.kind === "directory") {
+          parentNode.children.push({ name, kind: "directory", handle, children: [], expanded: false });
+        }
+      }
+    } catch (e) {
+      console.error("Error scanning directory:", e);
+    }
+  }
+
+  async function addDirectoryToWorkspace(dirHandle?: FileSystemDirectoryHandle): Promise<void> {
+    let dir: FileSystemDirectoryHandle;
+    if (dirHandle) {
+      dir = dirHandle;
+    } else {
+      if (!window.showDirectoryPicker) {
+        alert(_t("folder_link_unavailable"));
+        return;
+      }
+      try {
+        dir = await window.showDirectoryPicker();
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") console.error(e);
+        return;
+      }
+    }
+    const node = addDirectoryNode(dir.name, dir);
+    node.expanded = true;
+    await scanDirectoryChildren(node);
+    renderWorkspaceList();
+  }
+
+  btnWorkspace.addEventListener("click", () => {
+    workspaceVisible = !workspaceVisible;
+    updateWorkspaceVisibility();
+  });
+  btnOpenDir.addEventListener("click", () => void addDirectoryToWorkspace());
+
+  // Workspace resizer drag
+  const workspaceResizer = document.querySelector<HTMLElement>("#workspace-resizer")!;
+  let isWsResizing = false;
+  workspaceResizer.addEventListener("mousedown", () => {
+    isWsResizing = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!isWsResizing) return;
+    const sidebar = document.querySelector<HTMLElement>("#workspace-sidebar")!;
+    const newWidth = Math.max(150, Math.min(500, e.clientX));
+    sidebar.style.width = `${newWidth}px`;
+  });
+  document.addEventListener("mouseup", () => {
+    if (isWsResizing) {
+      isWsResizing = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  });
+
+  updateWorkspaceVisibility();
+  renderWorkspaceList();
+  // ────────────────────────────────────────────────────────
 
   btnSettings.addEventListener("click", () => {
     settingsDialog.showModal();
@@ -2578,14 +2830,9 @@ function mount(): void {
   let currentRelPathInWorkspace: string | null = null;
   let fileOpened = false;
 
-  function updateFilenameDisplay(): void {
-    filenameDisplay.textContent = fileOpened ? currentFileName : "";
-  }
-
   function markFileOpened(): void {
     if (!fileOpened) {
       fileOpened = true;
-      updateFilenameDisplay();
     }
   }
 
@@ -2593,7 +2840,7 @@ function mount(): void {
   if (!source.value) {
     source.value = DEFAULT_MD;
   }
-  updateFilenameDisplay();
+  
   preview.classList.add("fit-width");
   plantumlOutputFormat = "svg";
 
@@ -3021,11 +3268,11 @@ function mount(): void {
       if (!segs) {
         currentRelPathInWorkspace = null;
         currentFileName = fileHandle.name;
-        updateFilenameDisplay();
+        
       } else {
         currentRelPathInWorkspace = segs.join("/");
         currentFileName = currentRelPathInWorkspace;
-        updateFilenameDisplay();
+        
       }
     } catch (e) {
       console.warn(e);
@@ -3052,7 +3299,7 @@ function mount(): void {
         workspaceRootHandle = dir;
         currentRelPathInWorkspace = segs.join("/");
         currentFileName = currentRelPathInWorkspace;
-        updateFilenameDisplay();
+        
         return true;
       }
       workspaceRootHandle = dir;
@@ -3084,7 +3331,7 @@ function mount(): void {
         if (segs) {
           currentRelPathInWorkspace = segs.join("/");
           currentFileName = currentRelPathInWorkspace;
-          updateFilenameDisplay();
+          
           return true;
         }
       } catch (e) {
@@ -3116,8 +3363,10 @@ function mount(): void {
     await refreshWorkspacePath();
     if (!currentRelPathInWorkspace) {
       currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || h.name;
-      updateFilenameDisplay();
+      
     }
+    // Auto-add to workspace
+    addFileNode(h.name, h);
     scheduleRender();
   }
 
@@ -3229,7 +3478,7 @@ function mount(): void {
         source.value = text;
         lastSavedContent = text;
         markFileOpened();
-        updateFilenameDisplay();
+        
         scheduleRender();
       });
     } else {
@@ -3237,7 +3486,7 @@ function mount(): void {
         source.value = text;
         lastSavedContent = text;
         markFileOpened();
-        updateFilenameDisplay();
+        
         scheduleRender();
       });
     }
@@ -3246,23 +3495,7 @@ function mount(): void {
   async function openFileWithPicker(): Promise<void> {
     if (window.showOpenFilePicker) {
       try {
-        const options: OpenFilePickerOptions = {
-          types: [
-            {
-              description: "Markdown files",
-              accept: { "text/markdown": [".md", ".markdown", ".mdown", ".mkd"] },
-            },
-            {
-              description: "PlantUML diagrams",
-              accept: { "text/plain": [".puml", ".plantuml"] },
-            },
-            {
-              description: "XMind mind maps",
-              accept: { "application/octet-stream": [".xmind"] },
-            },
-          ],
-          multiple: false,
-        };
+        const options: OpenFilePickerOptions = { multiple: true };
         if (fileHandle) {
           options.startIn = fileHandle;
         } else if (workspaceRootHandle) {
@@ -3282,10 +3515,14 @@ function mount(): void {
         source.value = text;
         lastSavedContent = text;
         markFileOpened();
-        updateFilenameDisplay();
+        
         scheduleRender();
         updateReopenButton();
         await refreshWorkspacePath();
+        // Add all selected files to workspace
+        for (let i = 0; i < handles.length; i++) {
+          addFileNode(handles[i]!.name, handles[i]!);
+        }
       } catch (e) {
         if ((e as Error).name !== "AbortError") console.error(e);
       }
@@ -3315,7 +3552,7 @@ function mount(): void {
       source.value = text;
       lastSavedContent = text;
       markFileOpened();
-      updateFilenameDisplay();
+      
       scheduleRender();
       await refreshWorkspacePath();
     } catch (e) {
@@ -3424,7 +3661,7 @@ function mount(): void {
         await writable.close();
         lastSavedContent = content;
         fileOpened = true;
-        updateFilenameDisplay();
+        
         return;
       } catch (e) {
         console.warn("Could not save to original file:", e);
@@ -3447,7 +3684,7 @@ function mount(): void {
         fileHandle = newHandle;
         currentFileName = newHandle.name;
         fileOpened = true;
-        updateFilenameDisplay();
+        
         const writable = await newHandle.createWritable();
         await writable.write(content);
         await writable.close();
@@ -3475,7 +3712,7 @@ function mount(): void {
     URL.revokeObjectURL(url);
     lastSavedContent = content;
     fileOpened = true;
-    updateFilenameDisplay();
+    
   }
 
   btnOpenFile.addEventListener("click", () => void openFileWithPicker());
@@ -3543,12 +3780,10 @@ function mount(): void {
         try {
           const handle = await e.dataTransfer.items[0].getAsFileSystemHandle();
           if (handle && handle.kind === "directory") {
-            workspaceRootHandle = handle as FileSystemDirectoryHandle;
+            await addDirectoryToWorkspace(handle as FileSystemDirectoryHandle);
             await refreshWorkspacePath();
-            updateFilenameDisplay();
             updateReopenButton();
             scheduleRender();
-            alert(_t("folder_linked_confirm"));
             return;
           }
           if (handle && handle.kind === "file") {
@@ -3565,10 +3800,12 @@ function mount(): void {
             source.value = text;
             lastSavedContent = text;
             markFileOpened();
-            updateFilenameDisplay();
+            
             scheduleRender();
             updateReopenButton();
             await refreshWorkspacePath();
+            // Auto-add file to workspace
+            addFileNode(fileHandle.name, fileHandle);
             return;
           }
         } catch (err) {

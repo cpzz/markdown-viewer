@@ -9,6 +9,7 @@ release/
 .cursor/
 .vscode/
 .idea/
+.trae/
 *.swp
 *.swo
 
