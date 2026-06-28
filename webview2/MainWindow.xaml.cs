@@ -46,6 +46,8 @@ public sealed partial class MainWindow : Window
         {
             await WebView.EnsureCoreWebView2Async();
 
+            WebView.AllowDrop = true;
+
             WebView.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Auto;
 
             if (_devMode)

@@ -18,6 +18,10 @@ const I18N: Record<Locale, Record<string, string>> = {
     preview: "Preview",
     show_source: "Show source panel",
     show_preview: "Show preview panel",
+    hide_source: "Hide source panel",
+    hide_preview: "Hide preview panel",
+    show_workspace: "Show workspace",
+    hide_workspace: "Hide workspace",
     settings: "Settings",
     toggle_dark_mode: "Toggle dark mode",
     switch_lang: "Switch language",
@@ -92,6 +96,10 @@ const I18N: Record<Locale, Record<string, string>> = {
     preview: "\u9884\u89c8",
     show_source: "\u663e\u793a\u6e90\u7801\u9762\u677f",
     show_preview: "\u663e\u793a\u9884\u89c8\u9762\u677f",
+    hide_source: "\u9690\u85cf\u6e90\u7801\u9762\u677f",
+    hide_preview: "\u9690\u85cf\u9884\u89c8\u9762\u677f",
+    show_workspace: "\u663e\u793a\u5de5\u4f5c\u533a",
+    hide_workspace: "\u9690\u85cf\u5de5\u4f5c\u533a",
     settings: "\u8bbe\u7f6e",
     toggle_dark_mode: "\u5207\u6362\u6df1\u8272\u6a21\u5f0f",
     switch_lang: "\u5207\u6362\u8bed\u8a00",
@@ -179,11 +187,13 @@ function applyI18n(): void {
       el.textContent = text;
     }
   });
-  // Update source/preview button titles (set statically at build time)
+  // Update source/preview button titles based on current visibility state
   const btnSource = document.querySelector<HTMLButtonElement>("#btn-toggle-source");
-  if (btnSource) btnSource.title = _t("source");
+  if (btnSource) btnSource.title = btnSource.classList.contains("active") ? _t("hide_source") : _t("show_source");
   const btnPreview = document.querySelector<HTMLButtonElement>("#btn-toggle-preview");
-  if (btnPreview) btnPreview.title = _t("preview");
+  if (btnPreview) btnPreview.title = btnPreview.classList.contains("active") ? _t("hide_preview") : _t("show_preview");
+  const btnWorkspace = document.querySelector<HTMLButtonElement>("#btn-workspace");
+  if (btnWorkspace) btnWorkspace.title = btnWorkspace.classList.contains("active") ? _t("hide_workspace") : _t("show_workspace");
 }
 
 function setLocale(lang: Locale): void {
@@ -2131,45 +2141,59 @@ function mount(): void {
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) throw new Error("#app missing");
 
+  // ── Lucide icon SVGs (viewBox 0 0 24 24, stroke-based) ────────────────
+  const svgIcon = (inner: string, size = 16): string =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+
+  // Toggle icon pairs (16x16)
+  const ICON_PANEL_LEFT_OPEN = svgIcon(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/>`);
+  const ICON_PANEL_LEFT_CLOSE = svgIcon(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>`);
+  const ICON_FILE_TEXT = svgIcon(`<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`);
+  const ICON_FILE = svgIcon(`<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>`);
+  const ICON_EYE = svgIcon(`<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>`);
+  const ICON_EYE_CLOSED = svgIcon(`<path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/>`);
+  const ICON_SUN = svgIcon(`<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>`);
+  const ICON_MOON = svgIcon(`<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>`);
+  const ICON_CHEVRON_DOWN = svgIcon(`<polyline points="6 9 12 15 18 9"/>`);
+  const ICON_CHEVRON_UP = svgIcon(`<polyline points="18 15 12 9 6 15"/>`);
+  const ICON_FOLDER_OPEN = svgIcon(`<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>`);
+
+  // Static icons (16x16)
+  const ICON_FOLDER_PLUS = svgIcon(`<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>`);
+  const ICON_REFRESH_CCW = svgIcon(`<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>`);
+  const ICON_SAVE = svgIcon(`<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>`);
+  const ICON_LAYERS = svgIcon(`<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>`);
+  const ICON_SETTINGS = svgIcon(`<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>`);
+  const ICON_GLOBE = svgIcon(`<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>`);
+  const ICON_ARROW_UP = svgIcon(`<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>`);
+  const ICON_ARROW_DOWN = svgIcon(`<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>`);
+  const ICON_X = svgIcon(`<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`);
+  const ICON_REPLACE = svgIcon(`<path d="M14 4a1 1 0 0 1 1-1"/><path d="M15 10a1 1 0 0 1-1-1"/><path d="M21 4a1 1 0 0 0-1-1"/><path d="M21 9a1 1 0 0 1-1 1"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a2 2 0 0 1 2-2h2"/><rect x="3" y="14" width="7" height="7" rx="1"/>`);
+  const ICON_REPLACE_ALL = svgIcon(`<path d="M14 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1"/><path d="M14 4a1 1 0 0 1 1-1"/><path d="M15 10a1 1 0 0 1-1-1"/><path d="M19 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1"/><path d="M21 4a1 1 0 0 0-1-1"/><path d="M21 9a1 1 0 0 1-1 1"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a2 2 0 0 1 2-2h2"/><rect x="3" y="14" width="7" height="7" rx="1"/>`);
+  const ICON_CHEVRONS_LR_ELLIPSIS = svgIcon(`<path d="M12 12h.01"/><path d="M16 12h.01"/><path d="m17 7 5 5-5 5"/><path d="m7 7-5 5 5 5"/><path d="M8 12h.01"/>`);
+
   app.innerHTML = `
     <header>
       <img src="/logo.png" alt="" class="app-icon" id="app-logo"><h1 data-i18n="app_title">Markdown Viewer</h1>
       <div class="controls">
         <input type="file" id="file-open" multiple hidden />
-        <button type="button" id="btn-workspace" class="btn btn--icon toggle" data-i18n="workspace" data-i18n-attr="aria-label,title" title="${_t("workspace")}">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        </button>
-        <button type="button" id="btn-open-file" class="btn btn--icon" data-i18n="open_file" data-i18n-attr="aria-label,title">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        </button>
-        <button type="button" id="btn-open-dir" class="btn btn--icon" data-i18n="open_directory" data-i18n-attr="aria-label,title" title="${_t("open_directory")}">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-        </button>
-        <button type="button" id="btn-reopen-file" class="btn btn--icon" data-i18n="reopen_file" data-i18n-attr="aria-label,title" disabled>
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
-        </button>
-        <button type="button" id="btn-save-file" class="btn btn--icon" data-i18n="save_file" data-i18n-attr="aria-label,title">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        </button>
-        <button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
-        </button>
-        <span class="controls-spacer"></span>
-        <div class="toggle-group">
-          <button type="button" id="btn-toggle-source" class="btn btn--icon toggle active" aria-pressed="true" data-i18n="show_source" data-i18n-attr="aria-label" title="${_t("source")}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-          </button>
-          <button type="button" id="btn-toggle-preview" class="btn btn--icon toggle active" aria-pressed="true" data-i18n="show_preview" data-i18n-attr="aria-label" title="${_t("preview")}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
+        <button type="button" id="btn-workspace" class="btn btn--icon" data-i18n="workspace" data-i18n-attr="aria-label" title="${_t("hide_workspace")}">${ICON_PANEL_LEFT_CLOSE}</button>
+        <div class="open-menu-wrap" id="open-menu-wrap">
+          <button type="button" id="btn-open-file" class="btn btn--icon" data-i18n="open_file" data-i18n-attr="aria-label,title" aria-haspopup="true" aria-expanded="false">${ICON_FOLDER_PLUS}</button>
+          <div class="open-menu" id="open-menu" role="menu" hidden>
+            <button type="button" class="open-menu__item" id="open-menu-file" role="menuitem" data-i18n="open_file" data-i18n-attr="aria-label">${ICON_FILE_TEXT}<span data-i18n="open_file">Open File</span></button>
+            <button type="button" class="open-menu__item" id="open-menu-dir" role="menuitem" data-i18n="open_directory" data-i18n-attr="aria-label">${ICON_FOLDER_OPEN}<span data-i18n="open_directory">Open Directory</span></button>
+          </div>
         </div>
-        <button type="button" id="btn-settings" class="btn btn--icon" data-i18n="settings" data-i18n-attr="aria-label,title">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
-        <button type="button" id="btn-lang" class="btn btn--icon" data-i18n="switch_lang" data-i18n-attr="aria-label,title">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        </button>
-        <button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">☀</button>
+        <button type="button" id="btn-reopen-file" class="btn btn--icon" data-i18n="reopen_file" data-i18n-attr="aria-label,title" disabled>${ICON_REFRESH_CCW}</button>
+        <button type="button" id="btn-save-file" class="btn btn--icon" data-i18n="save_file" data-i18n-attr="aria-label,title">${ICON_SAVE}</button>
+        <button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">${ICON_LAYERS}</button>
+        <span class="controls-spacer"></span>
+        <button type="button" id="btn-toggle-source" class="btn btn--icon active" aria-pressed="true" data-i18n="show_source" data-i18n-attr="aria-label" title="${_t("hide_source")}">${ICON_FILE}</button>
+        <button type="button" id="btn-toggle-preview" class="btn btn--icon active" aria-pressed="true" data-i18n="show_preview" data-i18n-attr="aria-label" title="${_t("hide_preview")}">${ICON_EYE_CLOSED}</button>
+        <button type="button" id="btn-settings" class="btn btn--icon" data-i18n="settings" data-i18n-attr="aria-label,title">${ICON_SETTINGS}</button>
+        <button type="button" id="btn-lang" class="btn btn--icon" data-i18n="switch_lang" data-i18n-attr="aria-label,title">${ICON_GLOBE}</button>
+        <button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">${ICON_MOON}</button>
       </div>
     </header>
     <main>
@@ -2187,35 +2211,21 @@ function mount(): void {
             <input type="text" id="find-input" data-i18n="find" data-i18n-attr="placeholder,aria-label" />
             <div class="fr-controls" id="fr-controls-find">
               <span class="find-replace-info" id="find-info"></span>
-              <button type="button" id="btn-find-prev" class="btn-fr" data-i18n="previous" data-i18n-attr="title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
-              </button>
-              <button type="button" id="btn-find-next" class="btn-fr" data-i18n="next" data-i18n-attr="title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
+              <button type="button" id="btn-find-prev" class="btn-fr" data-i18n="previous" data-i18n-attr="title">${ICON_ARROW_UP}</button>
+              <button type="button" id="btn-find-next" class="btn-fr" data-i18n="next" data-i18n-attr="title">${ICON_ARROW_DOWN}</button>
               <label data-i18n="case_sensitive" data-i18n-attr="title"><input type="checkbox" id="find-case" /> Aa</label>
               <label data-i18n="regex" data-i18n-attr="title"><input type="checkbox" id="find-regex" /> .*</label>
-              <button type="button" id="btn-find-toggle-replace" class="btn-fr" data-i18n="toggle_replace" data-i18n-attr="title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-              </button>
-              <button type="button" class="btn-fr btn-close" id="btn-find-close" data-i18n="close" data-i18n-attr="title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
+              <button type="button" id="btn-find-toggle-replace" class="btn-fr" data-i18n="toggle_replace" data-i18n-attr="title">${ICON_CHEVRON_DOWN}</button>
+              <button type="button" class="btn-fr btn-close" id="btn-find-close" data-i18n="close" data-i18n-attr="title">${ICON_X}</button>
             </div>
           </div>
           <div class="find-replace-row" id="replace-row" style="display:none;">
             <input type="text" id="replace-input" data-i18n="replace" data-i18n-attr="placeholder,aria-label" />
             <div class="fr-controls" id="fr-controls-replace">
               <span class="find-replace-info"></span>
-              <button type="button" id="btn-replace-one" class="btn-fr" data-i18n="replace_one" data-i18n-attr="title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/></svg>
-              </button>
-              <button type="button" id="btn-replace-all" class="btn-fr" data-i18n="replace_all" data-i18n-attr="title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M17 21l4-4-4-4"/><path d="M3 13v2a4 4 0 0 0 4 4h14"/></svg>
-              </button>
-              <button type="button" id="btn-escape-replace" class="btn-fr" data-i18n="replace_escape" data-i18n-attr="title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><polyline points="10 12 12 14 14 12"/></svg>
-              </button>
+              <button type="button" id="btn-replace-one" class="btn-fr" data-i18n="replace_one" data-i18n-attr="title">${ICON_REPLACE}</button>
+              <button type="button" id="btn-replace-all" class="btn-fr" data-i18n="replace_all" data-i18n-attr="title">${ICON_REPLACE_ALL}</button>
+              <button type="button" id="btn-escape-replace" class="btn-fr" data-i18n="replace_escape" data-i18n-attr="title">${ICON_CHEVRONS_LR_ELLIPSIS}</button>
             </div>
           </div>
         </div>
@@ -2235,7 +2245,7 @@ function mount(): void {
         <div class="settings-dialog__panel">
         <div class="settings-dialog__header">
           <h2 id="settings-dialog-title" class="settings-dialog__title" data-i18n="settings_title">Settings</h2>
-          <button type="button" id="btn-settings-close" class="btn btn--icon" data-i18n="close_settings" data-i18n-attr="aria-label">\u00D7</button>
+          <button type="button" id="btn-settings-close" class="btn btn--icon" data-i18n="close_settings" data-i18n-attr="aria-label">${ICON_X}</button>
         </div>
         <div class="settings-dialog__body">
           <label class="settings-row settings-row--switch" for="fit-width">
@@ -2306,7 +2316,9 @@ function mount(): void {
   const workspaceSidebar = document.querySelector<HTMLElement>("#workspace-sidebar")!;
   const workspaceList = document.querySelector<HTMLElement>("#workspace-list")!;
   const btnWorkspace = document.querySelector<HTMLButtonElement>("#btn-workspace")!;
-  const btnOpenDir = document.querySelector<HTMLButtonElement>("#btn-open-dir")!;
+  const openMenu = document.querySelector<HTMLElement>("#open-menu")!;
+  const openMenuFile = document.querySelector<HTMLButtonElement>("#open-menu-file")!;
+  const openMenuDir = document.querySelector<HTMLButtonElement>("#open-menu-dir")!;
 
   interface WorkspaceTreeNode {
     name: string;
@@ -2322,6 +2334,8 @@ function mount(): void {
   function updateWorkspaceVisibility(): void {
     workspaceSidebar.classList.toggle("hidden", !workspaceVisible);
     btnWorkspace.classList.toggle("active", workspaceVisible);
+    btnWorkspace.innerHTML = workspaceVisible ? ICON_PANEL_LEFT_CLOSE : ICON_PANEL_LEFT_OPEN;
+    btnWorkspace.title = workspaceVisible ? _t("hide_workspace") : _t("show_workspace");
   }
 
   function renderWorkspaceList(): void {
@@ -2353,8 +2367,10 @@ function mount(): void {
     }
 
     const iconSvg = node.kind === "file"
-      ? `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`
-      : `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+      ? `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M9 15h6"/></svg>`
+      : (node.expanded
+        ? `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>`
+        : `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`);
     item.innerHTML = `${expandIcon}${iconSvg}<span class="workspace-item-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span><button type="button" class="workspace-item-remove" title="${_t("remove_from_workspace")}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
 
     // Clicking expand icon: toggle expand/collapse, load if needed
@@ -2487,7 +2503,31 @@ function mount(): void {
     workspaceVisible = !workspaceVisible;
     updateWorkspaceVisibility();
   });
-  btnOpenDir.addEventListener("click", () => void addDirectoryToWorkspace());
+
+  // ── Open menu (file / directory dropdown) ───────────────
+  function setOpenMenu(open: boolean): void {
+    openMenu.hidden = !open;
+    btnOpenFile.setAttribute("aria-expanded", open.toString());
+  }
+  btnOpenFile.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpenMenu(openMenu.hidden);
+  });
+  openMenuFile.addEventListener("click", () => {
+    setOpenMenu(false);
+    void openFileWithPicker();
+  });
+  openMenuDir.addEventListener("click", () => {
+    setOpenMenu(false);
+    void addDirectoryToWorkspace();
+  });
+  document.addEventListener("click", (e) => {
+    if (openMenu.hidden) return;
+    if (!(e.target as HTMLElement).closest("#open-menu-wrap")) setOpenMenu(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !openMenu.hidden) setOpenMenu(false);
+  });
 
   // Workspace resizer drag
   const workspaceResizer = document.querySelector<HTMLElement>("#workspace-resizer")!;
@@ -2531,7 +2571,7 @@ function mount(): void {
   // ── Theme toggle ────────────────────────────────────────
   function applyTheme(dark: boolean): void {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-    btnTheme.textContent = dark ? "\u263E" : "\u2600";
+    btnTheme.innerHTML = dark ? ICON_SUN : ICON_MOON;
     btnTheme.title = dark ? _t("switch_to_light") : _t("switch_to_dark");
     const appLogo = document.querySelector<HTMLImageElement>("#app-logo");
     if (appLogo) appLogo.src = dark ? "/logo-night.png" : "/logo.png";
@@ -2735,8 +2775,10 @@ function mount(): void {
     findReplaceBar.classList.add("visible");
     if (withReplace === false) {
       replaceRow.style.display = "none";
+      btnToggleReplace.innerHTML = ICON_CHEVRON_DOWN;
     } else if (withReplace === true) {
       replaceRow.style.display = "flex";
+      btnToggleReplace.innerHTML = ICON_CHEVRON_UP;
     }
     findInput.focus();
     findInput.select();
@@ -2754,6 +2796,7 @@ function mount(): void {
   function toggleReplaceRow(): void {
     const isVisible = replaceRow.style.display !== "none";
     replaceRow.style.display = isVisible ? "none" : "flex";
+    btnToggleReplace.innerHTML = isVisible ? ICON_CHEVRON_DOWN : ICON_CHEVRON_UP;
     if (!isVisible) {
       replaceInput.focus();
       requestAnimationFrame(syncControlsWidth);
@@ -2958,13 +3001,19 @@ function mount(): void {
 
   btnToggleSource.addEventListener("click", () => {
     btnToggleSource.classList.toggle("active");
-    btnToggleSource.setAttribute("aria-pressed", btnToggleSource.classList.contains("active").toString());
+    const active = btnToggleSource.classList.contains("active");
+    btnToggleSource.setAttribute("aria-pressed", active.toString());
+    btnToggleSource.innerHTML = active ? ICON_FILE : ICON_FILE_TEXT;
+    btnToggleSource.title = active ? _t("hide_source") : _t("show_source");
     updateLayout();
   });
 
   btnTogglePreview.addEventListener("click", () => {
     btnTogglePreview.classList.toggle("active");
-    btnTogglePreview.setAttribute("aria-pressed", btnTogglePreview.classList.contains("active").toString());
+    const active = btnTogglePreview.classList.contains("active");
+    btnTogglePreview.setAttribute("aria-pressed", active.toString());
+    btnTogglePreview.innerHTML = active ? ICON_EYE_CLOSED : ICON_EYE;
+    btnTogglePreview.title = active ? _t("hide_preview") : _t("show_preview");
     updateLayout();
   });
 
@@ -3725,7 +3774,6 @@ function mount(): void {
     
   }
 
-  btnOpenFile.addEventListener("click", () => void openFileWithPicker());
   btnReopenFile.addEventListener("click", () => void reopenFile());
   btnFormatFile.addEventListener("click", () => formatFile());
   btnSaveFile.addEventListener("click", () => void saveFile());
@@ -3743,13 +3791,16 @@ function mount(): void {
     }
   });
 
-  /** Document-level drag: avoids missed drops on children (e.g. textarea) and satisfies browser drop rules. */
+  /** Document-level drag: avoids missed drops on children (e.g. textarea) and satisfies browser drop rules.
+   *  preventDefault() is called unconditionally on dragenter/dragover/drop so WebView2 (which may not
+   *  expose "Files" in dataTransfer.types during dragover) still allows the drop instead of showing the
+   *  no-drop cursor. The hasFilePayload() gate is kept only for the cosmetic drag-active overlay. */
   let fileDragDepth = 0;
   document.addEventListener(
     "dragenter",
     (e) => {
-      if (!hasFilePayload(e.dataTransfer)) return;
       e.preventDefault();
+      if (!hasFilePayload(e.dataTransfer)) return;
       fileDragDepth += 1;
       app.classList.add("drag-active");
     },
@@ -3758,8 +3809,8 @@ function mount(): void {
   document.addEventListener(
     "dragleave",
     (e) => {
-      if (!hasFilePayload(e.dataTransfer)) return;
       e.preventDefault();
+      if (!hasFilePayload(e.dataTransfer)) return;
       fileDragDepth -= 1;
       if (fileDragDepth <= 0) {
         fileDragDepth = 0;
@@ -3771,16 +3822,14 @@ function mount(): void {
   document.addEventListener(
     "dragover",
     (e) => {
-      if (!hasFilePayload(e.dataTransfer)) return;
       e.preventDefault();
-      e.dataTransfer!.dropEffect = "copy";
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     },
     true,
   );
   document.addEventListener(
     "drop",
     async (e) => {
-      if (!hasFilePayload(e.dataTransfer)) return;
       e.preventDefault();
       fileDragDepth = 0;
       app.classList.remove("drag-active");

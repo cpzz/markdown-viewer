@@ -81,28 +81,7 @@ body {
   position: relative;
 }
 
-#app.drag-active::after {
-  content: "Drop a markdown file or project folder here";
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--fg);
-  background: color-mix(in srgb, var(--bg) 85%, var(--accent));
-  border: 2px dashed var(--accent);
-  border-radius: 12px;
-  margin: 8px;
-  pointer-events: none;
-}
 
-html[data-locale="zh"] #app.drag-active::after {
-  content: "将 Markdown 文件或项目文件夹拖到这里";
-}
 
 /* Header — translucent glass nav */
 header {
@@ -157,6 +136,57 @@ header h1 {
   flex: 1;
 }
 
+/* Open menu dropdown (merged file/directory open button) */
+.open-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.open-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 11rem;
+  padding: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.open-menu[hidden] {
+  display: none;
+}
+
+.open-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.open-menu__item:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.open-menu__item svg {
+  flex-shrink: 0;
+}
+
 /* Buttons — Apple pill style */
 .btn {
   font: inherit;
@@ -199,9 +229,9 @@ header h1 {
 .btn.toggle { background: transparent; color: var(--fg-muted); border-color: var(--border); }
 
 .btn.toggle.active {
-  background: var(--accent);
-  color: #ffffff;
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--fg-muted) 12%, transparent);
+  color: var(--fg-secondary);
+  border-color: var(--border);
 }
 
 .btn.toggle:hover:not(.active) {
@@ -1045,9 +1075,9 @@ html[data-theme="dark"] .plantuml-block img {
 }
 
 .toggle-group .btn.btn--icon.toggle.active {
-  background: var(--accent);
-  color: #ffffff;
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--fg-muted) 12%, transparent);
+  color: var(--fg-secondary);
+  border-color: var(--border);
 }
 
 .toggle-group .btn.btn--icon.toggle:hover:not(.active) {
