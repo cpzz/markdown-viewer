@@ -31,6 +31,8 @@ const I18N: Record<Locale, Record<string, string>> = {
     next: "Next (Enter)",
     case_sensitive: "Case sensitive",
     regex: "Regex",
+    whole_word: "Whole word",
+    preserve_case: "Preserve case",
     toggle_replace: "Toggle replace",
     close: "Close (Esc)",
     replace_one: "Replace",
@@ -109,6 +111,8 @@ const I18N: Record<Locale, Record<string, string>> = {
     next: "\u4e0b\u4e00\u4e2a (Enter)",
     case_sensitive: "\u533a\u5206\u5927\u5c0f\u5199",
     regex: "\u6b63\u5219\u8868\u8fbe\u5f0f",
+    whole_word: "\u5168\u8bcd\u5339\u914d",
+    preserve_case: "\u4fdd\u7559\u5927\u5c0f\u5199",
     toggle_replace: "\u5c55\u5f00\u66ff\u6362",
     close: "\u5173\u95ed (Esc)",
     replace_one: "\u66ff\u6362",
@@ -2171,6 +2175,8 @@ function mount(): void {
   const ICON_REPLACE = svgIcon(`<path d="M14 4a1 1 0 0 1 1-1"/><path d="M15 10a1 1 0 0 1-1-1"/><path d="M21 4a1 1 0 0 0-1-1"/><path d="M21 9a1 1 0 0 1-1 1"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a2 2 0 0 1 2-2h2"/><rect x="3" y="14" width="7" height="7" rx="1"/>`);
   const ICON_REPLACE_ALL = svgIcon(`<path d="M14 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1"/><path d="M14 4a1 1 0 0 1 1-1"/><path d="M15 10a1 1 0 0 1-1-1"/><path d="M19 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1"/><path d="M21 4a1 1 0 0 0-1-1"/><path d="M21 9a1 1 0 0 1-1 1"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a2 2 0 0 1 2-2h2"/><rect x="3" y="14" width="7" height="7" rx="1"/>`);
   const ICON_CHEVRONS_LR_ELLIPSIS = svgIcon(`<path d="M12 12h.01"/><path d="M16 12h.01"/><path d="m17 7 5 5-5 5"/><path d="m7 7-5 5 5 5"/><path d="M8 12h.01"/>`);
+  const ICON_WHOLE_WORD = svgIcon(`<circle cx="7" cy="12" r="3"/><path d="M10 9v6"/><circle cx="17" cy="12" r="3"/><path d="M14 7v8"/><path d="M22 17v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/>`);
+  const ICON_CASE_UPPER = svgIcon(`<path d="M15 11h4.5a1 1 0 0 1 0 5h-4a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h3a1 1 0 0 1 0 5"/><path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16"/><path d="M3.304 13h6.392"/>`);
 
   app.innerHTML = `
     <header>
@@ -2207,25 +2213,33 @@ function mount(): void {
       <div class="workspace-resizer" id="workspace-resizer"></div>
       <section class="panel" id="panel-source">
         <div class="find-replace-bar" id="find-replace-bar">
-          <div class="find-replace-row">
-            <input type="text" id="find-input" data-i18n="find" data-i18n-attr="placeholder,aria-label" />
-            <div class="fr-controls" id="fr-controls-find">
-              <span class="find-replace-info" id="find-info"></span>
-              <button type="button" id="btn-find-prev" class="btn-fr" data-i18n="previous" data-i18n-attr="title">${ICON_ARROW_UP}</button>
-              <button type="button" id="btn-find-next" class="btn-fr" data-i18n="next" data-i18n-attr="title">${ICON_ARROW_DOWN}</button>
-              <label data-i18n="case_sensitive" data-i18n-attr="title"><input type="checkbox" id="find-case" /> Aa</label>
-              <label data-i18n="regex" data-i18n-attr="title"><input type="checkbox" id="find-regex" /> .*</label>
-              <button type="button" id="btn-find-toggle-replace" class="btn-fr" data-i18n="toggle_replace" data-i18n-attr="title">${ICON_CHEVRON_DOWN}</button>
-              <button type="button" class="btn-fr btn-close" id="btn-find-close" data-i18n="close" data-i18n-attr="title">${ICON_X}</button>
+          <button type="button" id="btn-find-toggle-replace" class="btn-fr fr-expand" data-i18n="toggle_replace" data-i18n-attr="title">${ICON_CHEVRON_DOWN}</button>
+          <div class="fr-rows">
+            <div class="find-replace-row">
+              <div class="fr-input-wrap">
+                <input type="text" id="find-input" data-i18n="find" data-i18n-attr="placeholder,aria-label" />
+                <button type="button" id="find-case" class="fr-toggle" data-i18n="case_sensitive" data-i18n-attr="title,aria-label" aria-pressed="false">Aa</button>
+                <button type="button" id="find-word" class="fr-toggle fr-toggle--icon" data-i18n="whole_word" data-i18n-attr="title,aria-label" aria-pressed="false">${ICON_WHOLE_WORD}</button>
+                <button type="button" id="find-regex" class="fr-toggle" data-i18n="regex" data-i18n-attr="title,aria-label" aria-pressed="false">.*</button>
+              </div>
+              <div class="fr-controls" id="fr-controls-find">
+                <span class="find-replace-info" id="find-info"></span>
+                <button type="button" id="btn-find-prev" class="btn-fr" data-i18n="previous" data-i18n-attr="title">${ICON_ARROW_UP}</button>
+                <button type="button" id="btn-find-next" class="btn-fr" data-i18n="next" data-i18n-attr="title">${ICON_ARROW_DOWN}</button>
+                <button type="button" class="btn-fr btn-close" id="btn-find-close" data-i18n="close" data-i18n-attr="title">${ICON_X}</button>
+              </div>
             </div>
-          </div>
-          <div class="find-replace-row" id="replace-row" style="display:none;">
-            <input type="text" id="replace-input" data-i18n="replace" data-i18n-attr="placeholder,aria-label" />
-            <div class="fr-controls" id="fr-controls-replace">
-              <span class="find-replace-info"></span>
-              <button type="button" id="btn-replace-one" class="btn-fr" data-i18n="replace_one" data-i18n-attr="title">${ICON_REPLACE}</button>
-              <button type="button" id="btn-replace-all" class="btn-fr" data-i18n="replace_all" data-i18n-attr="title">${ICON_REPLACE_ALL}</button>
-              <button type="button" id="btn-escape-replace" class="btn-fr" data-i18n="replace_escape" data-i18n-attr="title">${ICON_CHEVRONS_LR_ELLIPSIS}</button>
+            <div class="find-replace-row" id="replace-row" style="display:none;">
+              <div class="fr-input-wrap">
+                <input type="text" id="replace-input" data-i18n="replace" data-i18n-attr="placeholder,aria-label" />
+                <button type="button" id="replace-preserve" class="fr-toggle fr-toggle--icon" data-i18n="preserve_case" data-i18n-attr="title,aria-label" aria-pressed="false">${ICON_CASE_UPPER}</button>
+              </div>
+              <div class="fr-controls" id="fr-controls-replace">
+                <span class="find-replace-info"></span>
+                <button type="button" id="btn-replace-one" class="btn-fr" data-i18n="replace_one" data-i18n-attr="title">${ICON_REPLACE}</button>
+                <button type="button" id="btn-replace-all" class="btn-fr" data-i18n="replace_all" data-i18n-attr="title">${ICON_REPLACE_ALL}</button>
+                <button type="button" id="btn-escape-replace" class="btn-fr" data-i18n="replace_escape" data-i18n-attr="title">${ICON_CHEVRONS_LR_ELLIPSIS}</button>
+              </div>
             </div>
           </div>
         </div>
@@ -2235,6 +2249,24 @@ function mount(): void {
       <div class="resizer" id="resizer"></div>
       <section class="panel" id="panel-preview">
         <label for="preview-wrap" data-i18n="preview_label">Preview</label>
+        <div class="find-replace-bar find-bar--preview" id="preview-find-bar">
+          <div class="fr-rows">
+            <div class="find-replace-row">
+              <div class="fr-input-wrap">
+                <input type="text" id="pv-find-input" data-i18n="find" data-i18n-attr="placeholder,aria-label" />
+                <button type="button" id="pv-find-case" class="fr-toggle" data-i18n="case_sensitive" data-i18n-attr="title,aria-label" aria-pressed="false">Aa</button>
+                <button type="button" id="pv-find-word" class="fr-toggle fr-toggle--icon" data-i18n="whole_word" data-i18n-attr="title,aria-label" aria-pressed="false">${ICON_WHOLE_WORD}</button>
+                <button type="button" id="pv-find-regex" class="fr-toggle" data-i18n="regex" data-i18n-attr="title,aria-label" aria-pressed="false">.*</button>
+              </div>
+              <div class="fr-controls">
+                <span class="find-replace-info" id="pv-find-info"></span>
+                <button type="button" id="pv-find-prev" class="btn-fr" data-i18n="previous" data-i18n-attr="title">${ICON_ARROW_UP}</button>
+                <button type="button" id="pv-find-next" class="btn-fr" data-i18n="next" data-i18n-attr="title">${ICON_ARROW_DOWN}</button>
+                <button type="button" class="btn-fr btn-close" id="pv-find-close" data-i18n="close" data-i18n-attr="title">${ICON_X}</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div id="preview-wrap" tabindex="-1">
           <article id="preview"></article>
         </div>
@@ -2606,8 +2638,9 @@ function mount(): void {
   const replaceInput = document.querySelector<HTMLInputElement>("#replace-input")!;
   const replaceRow = document.querySelector<HTMLElement>("#replace-row")!;
   const findInfo = document.querySelector<HTMLElement>("#find-info")!;
-  const findCase = document.querySelector<HTMLInputElement>("#find-case")!;
-  const findRegex = document.querySelector<HTMLInputElement>("#find-regex")!;
+  const findCase = document.querySelector<HTMLButtonElement>("#find-case")!;
+  const findRegex = document.querySelector<HTMLButtonElement>("#find-regex")!;
+  const findWord = document.querySelector<HTMLButtonElement>("#find-word")!;
   const btnFindPrev = document.querySelector<HTMLButtonElement>("#btn-find-prev")!;
   const btnFindNext = document.querySelector<HTMLButtonElement>("#btn-find-next")!;
   const btnFindClose = document.querySelector<HTMLButtonElement>("#btn-find-close")!;
@@ -2615,6 +2648,7 @@ function mount(): void {
   const btnReplaceOne = document.querySelector<HTMLButtonElement>("#btn-replace-one")!;
   const btnReplaceAll = document.querySelector<HTMLButtonElement>("#btn-replace-all")!;
   const btnEscapeReplace = document.querySelector<HTMLButtonElement>("#btn-escape-replace")!;
+  const replacePreserve = document.querySelector<HTMLButtonElement>("#replace-preserve")!;
 
   // Sync controls widths so both inputs are the same width
   const frControlsFind = document.querySelector<HTMLElement>("#fr-controls-find")!;
@@ -2639,9 +2673,10 @@ function mount(): void {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
-  function buildRegex(searchText: string, caseSensitive: boolean, useRegex: boolean): RegExp | null {
+  function buildRegex(searchText: string, caseSensitive: boolean, useRegex: boolean, wholeWord = false): RegExp | null {
     if (!searchText) return null;
-    const pattern = useRegex ? searchText : escapeRegex(searchText);
+    let pattern = useRegex ? searchText : escapeRegex(searchText);
+    if (wholeWord) pattern = `\\b(?:${pattern})\\b`;
     const flags = caseSensitive ? "g" : "gi";
     try {
       return new RegExp(pattern, flags);
@@ -2650,10 +2685,25 @@ function mount(): void {
     }
   }
 
+  function applyCasePattern(matched: string, replacement: string): string {
+    if (matched.length === 0) return replacement;
+    if (matched === matched.toUpperCase() && matched !== matched.toLowerCase()) {
+      return replacement.toUpperCase();
+    }
+    if (matched === matched.toLowerCase() && matched !== matched.toUpperCase()) {
+      return replacement.toLowerCase();
+    }
+    const first = matched.charAt(0);
+    if (first === first.toUpperCase() && first !== first.toLowerCase()) {
+      return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+    }
+    return replacement;
+  }
+
   function findAllMatches(): void {
     const text = source.value;
     const searchText = findInput.value;
-    const regex = buildRegex(searchText, findCase.checked, findRegex.checked);
+    const regex = buildRegex(searchText, findCase.classList.contains("active"), findRegex.classList.contains("active"), findWord.classList.contains("active"));
 
     matches = [];
     if (!regex) {
@@ -2724,8 +2774,12 @@ function mount(): void {
     const match = matches[currentMatchIndex];
     const text = source.value;
     const before = text.substring(0, match.index);
+    const matchedText = text.substring(match.index, match.index + match.length);
     const after = text.substring(match.index + match.length);
-    source.value = before + replaceInput.value + after;
+    const replacement = replacePreserve.classList.contains("active")
+      ? applyCasePattern(matchedText, replaceInput.value)
+      : replaceInput.value;
+    source.value = before + replacement + after;
 
     findAllMatches();
     if (matches.length > 0) {
@@ -2741,11 +2795,15 @@ function mount(): void {
   function replaceAll(): void {
     const searchText = findInput.value;
     const replaceText = replaceInput.value;
-    const regex = buildRegex(searchText, findCase.checked, findRegex.checked);
+    const regex = buildRegex(searchText, findCase.classList.contains("active"), findRegex.classList.contains("active"), findWord.classList.contains("active"));
     if (!regex) return;
 
     const count = matches.length;
-    source.value = source.value.replace(regex, replaceText);
+    if (replacePreserve.classList.contains("active")) {
+      source.value = source.value.replace(regex, (m) => applyCasePattern(m, replaceText));
+    } else {
+      source.value = source.value.replace(regex, replaceText);
+    }
     findAllMatches();
     currentMatchIndex = -1;
     updateMatchInfo();
@@ -2844,27 +2902,34 @@ function mount(): void {
     }
   });
 
-  findCase.addEventListener("change", () => {
+  function onFindToggle(btn: HTMLButtonElement): void {
+    const active = !btn.classList.contains("active");
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active.toString());
     findAllMatches();
     currentMatchIndex = matches.length > 0 ? 0 : -1;
     if (matches.length > 0) {
       highlightCurrentMatch();
     }
-  });
-
-  findRegex.addEventListener("change", () => {
-    findAllMatches();
-    currentMatchIndex = matches.length > 0 ? 0 : -1;
-    if (matches.length > 0) {
-      highlightCurrentMatch();
-    }
+  }
+  findCase.addEventListener("click", () => onFindToggle(findCase));
+  findRegex.addEventListener("click", () => onFindToggle(findRegex));
+  findWord.addEventListener("click", () => onFindToggle(findWord));
+  replacePreserve.addEventListener("click", () => {
+    const active = !replacePreserve.classList.contains("active");
+    replacePreserve.classList.toggle("active", active);
+    replacePreserve.setAttribute("aria-pressed", active.toString());
   });
 
   // Keyboard shortcuts — document-level so they work regardless of focus
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "f") {
       e.preventDefault();
-      showFindBar(false);
+      if (previewWrap.contains(document.activeElement) || previewWrap.matches(":hover")) {
+        showPreviewFindBar();
+      } else {
+        showFindBar(false);
+      }
     } else if ((e.ctrlKey || e.metaKey) && e.key === "h") {
       e.preventDefault();
       showFindBar(true);
@@ -2872,6 +2937,124 @@ function mount(): void {
       e.preventDefault();
       hideFindBar();
     }
+  });
+  // ─────────────────────────────────────────────────────────
+
+  // ── Preview find (no replace) ──────────────────────────────
+  const previewFindBar = document.querySelector<HTMLElement>("#preview-find-bar")!;
+  const pvFindInput = document.querySelector<HTMLInputElement>("#pv-find-input")!;
+  const pvFindInfo = document.querySelector<HTMLElement>("#pv-find-info")!;
+  const pvFindCase = document.querySelector<HTMLButtonElement>("#pv-find-case")!;
+  const pvFindWord = document.querySelector<HTMLButtonElement>("#pv-find-word")!;
+  const pvFindRegex = document.querySelector<HTMLButtonElement>("#pv-find-regex")!;
+  const pvBtnPrev = document.querySelector<HTMLButtonElement>("#pv-find-prev")!;
+  const pvBtnNext = document.querySelector<HTMLButtonElement>("#pv-find-next")!;
+  const pvBtnClose = document.querySelector<HTMLButtonElement>("#pv-find-close")!;
+
+  const supportsHighlight = typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined";
+  let pvRanges: Range[] = [];
+  let pvCurrent = -1;
+
+  function pvClearHighlights(): void {
+    if (!supportsHighlight) return;
+    CSS.highlights.delete("pv-find-all");
+    CSS.highlights.delete("pv-find-current");
+  }
+
+  function pvFindAll(): void {
+    pvRanges = [];
+    pvCurrent = -1;
+    const term = pvFindInput.value;
+    const regex = buildRegex(term, pvFindCase.classList.contains("active"), pvFindRegex.classList.contains("active"), pvFindWord.classList.contains("active"));
+    if (!regex || !supportsHighlight) {
+      pvClearHighlights();
+      pvFindInfo.textContent = term ? _t("no_matches") : "";
+      return;
+    }
+    const walker = document.createTreeWalker(preview, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const text = node.nodeValue ?? "";
+      regex.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = regex.exec(text)) !== null) {
+        if (m[0].length === 0) { regex.lastIndex++; continue; }
+        const range = document.createRange();
+        range.setStart(node, m.index);
+        range.setEnd(node, m.index + m[0].length);
+        pvRanges.push(range);
+      }
+    }
+    pvUpdateHighlights();
+    if (pvRanges.length > 0) { pvCurrent = 0; pvScrollToCurrent(); }
+    pvUpdateInfo();
+  }
+
+  function pvUpdateHighlights(): void {
+    if (!supportsHighlight) return;
+    CSS.highlights.set("pv-find-all", new Highlight(...pvRanges));
+    if (pvCurrent >= 0 && pvRanges[pvCurrent]) {
+      CSS.highlights.set("pv-find-current", new Highlight(pvRanges[pvCurrent]));
+    } else {
+      CSS.highlights.delete("pv-find-current");
+    }
+  }
+
+  function pvUpdateInfo(): void {
+    pvFindInfo.textContent = pvRanges.length === 0
+      ? (pvFindInput.value ? _t("no_matches") : "")
+      : `${pvCurrent + 1}/${pvRanges.length}`;
+  }
+
+  function pvScrollToCurrent(): void {
+    const r = pvRanges[pvCurrent];
+    if (r) r.startContainer.parentElement?.scrollIntoView({ block: "center", behavior: "smooth" });
+    pvUpdateHighlights();
+  }
+
+  function pvNext(): void {
+    if (pvRanges.length === 0) return;
+    pvCurrent = (pvCurrent + 1) % pvRanges.length;
+    pvScrollToCurrent();
+    pvUpdateInfo();
+  }
+  function pvPrev(): void {
+    if (pvRanges.length === 0) return;
+    pvCurrent = (pvCurrent - 1 + pvRanges.length) % pvRanges.length;
+    pvScrollToCurrent();
+    pvUpdateInfo();
+  }
+
+  function showPreviewFindBar(): void {
+    previewFindBar.classList.add("visible");
+    pvFindInput.focus();
+    pvFindInput.select();
+    pvFindAll();
+  }
+  function hidePreviewFindBar(): void {
+    previewFindBar.classList.remove("visible");
+    pvClearHighlights();
+    pvRanges = [];
+    pvCurrent = -1;
+    pvFindInfo.textContent = "";
+  }
+
+  function pvToggle(btn: HTMLButtonElement): void {
+    const active = !btn.classList.contains("active");
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active.toString());
+    pvFindAll();
+  }
+  pvFindCase.addEventListener("click", () => pvToggle(pvFindCase));
+  pvFindRegex.addEventListener("click", () => pvToggle(pvFindRegex));
+  pvFindWord.addEventListener("click", () => pvToggle(pvFindWord));
+  pvFindInput.addEventListener("input", pvFindAll);
+  pvBtnNext.addEventListener("click", pvNext);
+  pvBtnPrev.addEventListener("click", pvPrev);
+  pvBtnClose.addEventListener("click", hidePreviewFindBar);
+  pvFindInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); e.shiftKey ? pvPrev() : pvNext(); }
+    else if (e.key === "Escape") { e.preventDefault(); hidePreviewFindBar(); }
   });
   // ─────────────────────────────────────────────────────────
 
@@ -3268,6 +3451,7 @@ function mount(): void {
     });
 
     activatePlantumlBlocks();
+    if (previewFindBar.classList.contains("visible")) pvFindAll();
   }
 
   let t: ReturnType<typeof setTimeout> | undefined;
