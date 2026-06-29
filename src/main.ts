@@ -2157,8 +2157,7 @@ function mount(): void {
   const ICON_FILE_PLUS = svgIcon(`<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M9 15h6"/><path d="M12 18v-6"/>`);
   const ICON_EYE = svgIcon(`<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>`);
   const ICON_EYE_CLOSED = svgIcon(`<path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/>`);
-  const ICON_SUN = svgIcon(`<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>`);
-  const ICON_MOON = svgIcon(`<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>`);
+  const ICON_LOGO = svgIcon(`<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>`);
   const ICON_CHEVRON_DOWN = svgIcon(`<polyline points="6 9 12 15 18 9"/>`);
   const ICON_CHEVRON_UP = svgIcon(`<polyline points="18 15 12 9 6 15"/>`);
   const ICON_FOLDER_OPEN = svgIcon(`<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>`);
@@ -2200,7 +2199,7 @@ function mount(): void {
         <button type="button" id="btn-toggle-preview" class="btn btn--icon active" aria-pressed="true" data-i18n="show_preview" data-i18n-attr="aria-label" title="${_t("hide_preview")}">${ICON_EYE_CLOSED}</button>
         <button type="button" id="btn-settings" class="btn btn--icon" data-i18n="settings" data-i18n-attr="aria-label,title">${ICON_SETTINGS}</button>
         <button type="button" id="btn-lang" class="btn btn--icon" data-i18n="switch_lang" data-i18n-attr="aria-label,title">${ICON_GLOBE}</button>
-        <button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">${ICON_MOON}</button>
+        <button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">${ICON_LOGO}</button>
       </div>
     </header>
     <main>
@@ -2604,24 +2603,15 @@ function mount(): void {
   // ── Theme toggle ────────────────────────────────────────
   function applyTheme(dark: boolean): void {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-    btnTheme.innerHTML = dark ? ICON_SUN : ICON_MOON;
     btnTheme.title = dark ? _t("switch_to_light") : _t("switch_to_dark");
     const appLogo = document.querySelector<HTMLImageElement>("#app-logo");
-    if (appLogo) appLogo.src = dark ? "/logo-night.png" : "/logo.png";
-  }
-
-  function applySystemFavicon(): void {
-    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const favicon = document.querySelector<HTMLLinkElement>("#favicon");
-    if (favicon) favicon.href = isDark ? "/logo-night.png" : "/logo.png";
+    if (appLogo) appLogo.src = "/logo.png";
   }
 
   (function initTheme(): void {
     const stored = localStorage.getItem("md-viewer-theme");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     applyTheme(stored ? stored === "dark" : prefersDark);
-    applySystemFavicon();
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applySystemFavicon);
   })();
 
   btnTheme.addEventListener("click", () => {

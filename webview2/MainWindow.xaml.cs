@@ -21,7 +21,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1200, 800));
         ((OverlappedPresenter)AppWindow.Presenter).Maximize();
-        AppWindow.SetIcon("logo.ico");
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "logo.ico"));
 
         SetMicaBackdrop();
 
