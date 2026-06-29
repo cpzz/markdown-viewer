@@ -8,9 +8,9 @@
 | 按钮 ID | 功能 | 图标（Lucide） | 状态说明 | 位置 |
 |---------|------|---------------|---------|------|
 | `btn-workspace` | 显示/隐藏工作区侧边栏 | [panel-left-close](https://lucide.dev/icons/panel-left-close) / [panel-left-open](https://lucide.dev/icons/panel-left-open) | 可见→close；隐藏→open | [main.ts#L2180](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2180) |
-| `btn-open-file` | 打开文件/目录（下拉菜单触发） | [folder-plus](https://lucide.dev/icons/folder-plus) | 静态 | [main.ts#L2182](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2182) |
-| `open-menu-file` | 打开文件（菜单项） | [file-text](https://lucide.dev/icons/file-text) | 静态 | [main.ts#L2184](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2184) |
-| `open-menu-dir` | 打开目录（菜单项） | [folder-open](https://lucide.dev/icons/folder-open) | 静态 | [main.ts#L2185](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2185) |
+| `btn-open-file` | 打开文件/目录（下拉菜单触发） | [folder-open](https://lucide.dev/icons/folder-open) | 静态 | [main.ts#L2182](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2182) |
+| `open-menu-file` | 打开文件（菜单项） | [file-plus](https://lucide.dev/icons/file-plus) | 静态 | [main.ts#L2184](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2184) |
+| `open-menu-dir` | 打开目录（菜单项） | [folder-plus](https://lucide.dev/icons/folder-plus) | 静态 | [main.ts#L2185](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2185) |
 | `btn-reopen-file` | 重新打开文件 | [refresh-ccw](https://lucide.dev/icons/refresh-ccw) | 静态 | [main.ts#L2188](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2188) |
 | `btn-save-file` | 保存文件 | [save](https://lucide.dev/icons/save) | 静态 | [main.ts#L2189](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2189) |
 | `btn-format-file` | 格式化文件 | [layers](https://lucide.dev/icons/layers) | 静态 | [main.ts#L2190](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2190) |
@@ -59,6 +59,6 @@
 
 - 所有图标定义集中在 [main.ts#L2144-L2173](file:///d:/workspace/workspace/markdown-viewer/src/main.ts#L2144-L2173)（`svgIcon` helper + `ICON_*` 常量）。
 - 可切换按钮（工作区/源码/预览/主题）的图标在点击处理函数中按当前状态动态切换 `innerHTML`。
-- 原 `btn-open-file` 与 `btn-open-dir` 已合并为单个 `btn-open-file`（folder-plus），点击弹出下拉菜单，内含 `open-menu-file` / `open-menu-dir` 两个菜单项。
+- 原 `btn-open-file` 与 `btn-open-dir` 已合并为单个 `btn-open-file`（folder-open），点击弹出下拉菜单，内含 `open-menu-file` / `open-menu-dir` 两个菜单项。
 - 原 `btn-ws-add-dir` 已移除（打开目录功能并入上述下拉菜单）。
 - `btn-theme` 与 `btn-settings-close` 不再使用 Unicode 字符，均已改为内联 SVG。
