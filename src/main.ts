@@ -1716,66 +1716,13 @@ function slugify(text: string): string {
 
 let headingCount: Record<string, number> = {};
 
-/** C-style line scan: line comments, strings, and block-comment depth (slash-star … star-slash). */
-function updateBlockCommentDepthForLine(line: string, depth: number): number {
-  let d = depth;
-  let i = 0;
-  let inString: '"' | "'" | "`" | null = null;
-  let escape = false;
-
-  while (i < line.length) {
-    const c = line[i];
-    if (inString) {
-      if (escape) {
-        escape = false;
-        i++;
-        continue;
-      }
-      if (c === "\\") {
-        escape = true;
-        i++;
-        continue;
-      }
-      if (c === inString) {
-        inString = null;
-      }
-      i++;
-      continue;
-    }
-
-    if (c === "/" && line[i + 1] === "/") {
-      break;
-    }
-    if (c === "/" && line[i + 1] === "*") {
-      d++;
-      i += 2;
-      continue;
-    }
-    if (c === "*" && line[i + 1] === "/") {
-      d = Math.max(0, d - 1);
-      i += 2;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      inString = c;
-      i++;
-      continue;
-    }
-    i++;
-  }
-  return d;
-}
-
-/** First line from startLineIdx that is a closing fence (trim equals fence) and not inside a C-style block comment. */
+/** First line from startLineIdx that is a closing fence (trimmed content equals the fence sequence). */
 function findClosingFenceLineIndexInLines(lines: string[], startLineIdx: number, fenceLen: number): number {
   const fence = "`".repeat(fenceLen);
-  let blockCommentDepth = 0;
   for (let li = startLineIdx; li < lines.length; li++) {
-    const line = lines[li];
-    if (blockCommentDepth === 0 && line.trim() === fence) {
+    if (lines[li].trim() === fence) {
       return li;
     }
-    blockCommentDepth = updateBlockCommentDepthForLine(line, blockCommentDepth);
   }
   return -1;
 }
