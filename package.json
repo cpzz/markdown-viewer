@@ -8,8 +8,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "start": "vite preview",
-    "webview2:dev": "dotnet run --project webview2 -r win-x64 -- --dev",
-    "webview2:build": "npm run build && dotnet publish webview2 -c Release -r win-x64 -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist/webview2"
+    "app:dev": "dotnet run --project webview2 -r win-x64 -- --dev",
+    "app:build": "dotnet publish webview2 -c Release -r win-x64 -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist/MarkdownViewer",
+    "all:build": "npm run build && npm run app:build"
   },
   "dependencies": {
     "dompurify": "^3.2.4",
