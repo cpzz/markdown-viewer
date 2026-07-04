@@ -29,3 +29,6 @@ npm-debug.log*
 # WebView2
 webview2/bin/
 webview2/obj/
+
+# Electron
+dist-electron/

@@ -4,13 +4,13 @@
   "version": "1.0.0",
   "license": "Apache-2.0",
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "start": "vite preview",
-    "app:dev": "dotnet run --project webview2 -r win-x64 -- --dev",
     "app:build": "dotnet publish webview2 -c Release -r win-x64 -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist/MarkdownViewer",
-    "all:build": "npm run build && npm run app:build"
+    "win": "tsc && vite --config vite.config.electron.ts",
+    "server": "vite preview"
   },
   "dependencies": {
     "dompurify": "^3.2.4",
@@ -21,6 +21,10 @@
   },
   "devDependencies": {
     "typescript": "~5.7.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0",
+    "vite-plugin-electron": "^0.28.0",
+    "vite-plugin-electron-renderer": "^0.14.0"
   }
 }

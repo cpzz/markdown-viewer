@@ -4,6 +4,9 @@ import { marked, type Tokens } from "marked";
 import * as plantumlEncoderPkg from "plantuml-encoder";
 import "./style.css";
 
+/* ── Electron environment detection ───────────────────────────────── */
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
+
 /* ── i18n ─────────────────────────────────────────────────────────── */
 type Locale = "en" | "zh";
 
@@ -2997,6 +3000,8 @@ function mount(): void {
   // ─────────────────────────────────────────────────────────
 
   let currentFileName = "document.md";
+  /** Electron: stores the full file path for reopen/save operations */
+  let electronFilePath: string | null = null;
   let fileHandle: FileSystemFileHandle | null = null;
   /** When set, relative preview links resolve under this directory (via `resolve(currentFileHandle)`). */
   let workspaceRootHandle: FileSystemDirectoryHandle | null = null;
@@ -3674,6 +3679,28 @@ function mount(): void {
   }
 
   async function openFileWithPicker(): Promise<void> {
+    // Electron environment
+    if (isElectron && window.electronAPI) {
+      try {
+        const result = await window.electronAPI.openFile();
+        if (!result.filePath) return;
+        
+        const content = await window.electronAPI.readFile(result.filePath);
+        electronFilePath = result.filePath;
+        currentFileName = result.filePath.split('\\').pop()?.split('/').pop() || 'document.md';
+        source.value = content;
+        lastSavedContent = content;
+        markFileOpened();
+        
+        scheduleRender();
+        updateReopenButton();
+      } catch (e) {
+        console.error('Failed to open file in Electron:', e);
+      }
+      return;
+    }
+
+    // Browser with File System Access API
     if (window.showOpenFilePicker) {
       try {
         const options: OpenFilePickerOptions = { multiple: true };
@@ -3713,6 +3740,29 @@ function mount(): void {
   }
 
   async function reopenFile(): Promise<void> {
+    // Electron environment
+    if (isElectron && window.electronAPI) {
+      if (!electronFilePath) return;
+
+      if (isContentModified()) {
+        const confirmed = confirm(_t("unsaved_changes_reopen"));
+        if (!confirmed) return;
+      }
+
+      try {
+        const content = await window.electronAPI.readFile(electronFilePath);
+        source.value = content;
+        lastSavedContent = content;
+        markFileOpened();
+        
+        scheduleRender();
+      } catch (e) {
+        console.error("Could not reopen file in Electron:", e);
+      }
+      return;
+    }
+
+    // Browser environment
     if (!fileHandle) return;
 
     if (isContentModified()) {
@@ -3830,6 +3880,22 @@ function mount(): void {
 
   async function saveFile(): Promise<void> {
     const content = source.value;
+
+    // Electron environment
+    if (isElectron && window.electronAPI) {
+      try {
+        const result = await window.electronAPI.saveFile(content);
+        if (result.filePath) {
+          electronFilePath = result.filePath;
+          currentFileName = result.filePath.split('\\').pop()?.split('/').pop() || currentFileName;
+          lastSavedContent = content;
+          fileOpened = true;
+        }
+      } catch (e) {
+        console.error('Failed to save file in Electron:', e);
+      }
+      return;
+    }
 
     // Try to save directly to original file
     if (fileHandle) {
