@@ -2312,9 +2312,13 @@ function mount(): void {
 
   let workspaceTree: WorkspaceTreeNode[] = [];
   let workspaceVisible = true;
+  let workspaceWidth = "";
 
   function updateWorkspaceVisibility(): void {
     workspaceSidebar.classList.toggle("hidden", !workspaceVisible);
+    // Clear inline width when hidden so the CSS `.hidden { width: 0 }` rule can
+    // collapse the sidebar; restore the resized width when shown again.
+    workspaceSidebar.style.width = workspaceVisible ? workspaceWidth : "";
     btnWorkspace.classList.toggle("active", workspaceVisible);
     btnWorkspace.innerHTML = workspaceVisible ? ICON_PANEL_LEFT_CLOSE : ICON_PANEL_LEFT_OPEN;
     btnWorkspace.title = workspaceVisible ? _t("hide_workspace") : _t("show_workspace");
@@ -2523,7 +2527,8 @@ function mount(): void {
     if (!isWsResizing) return;
     const sidebar = document.querySelector<HTMLElement>("#workspace-sidebar")!;
     const newWidth = Math.max(150, Math.min(500, e.clientX));
-    sidebar.style.width = `${newWidth}px`;
+    workspaceWidth = `${newWidth}px`;
+    sidebar.style.width = workspaceWidth;
   });
   document.addEventListener("mouseup", () => {
     if (isWsResizing) {

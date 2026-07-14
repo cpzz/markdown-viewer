@@ -36,7 +36,7 @@ Requirements:
 For development with hot-reload and TypeScript:
 
 ```bash
-# Install dependencies
+# Install dependencies (optional: use mirror to speed up electron download)
 npm install
 
 # Start development server
@@ -46,7 +46,32 @@ npm run dev
 npm run build
 
 # Start production server
-npm start
+npm run server
+```
+
+**Speeding up Electron download** (optional, only if default download is slow):
+
+If `npm install` downloads Electron slowly, you can set a mirror:
+
+```bash
+# Linux / macOS
+export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+npm install
+
+# Windows PowerShell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+npm install
+
+# Windows CMD
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+npm install
+```
+
+Verify the environment variable:
+
+```bash
+echo $ELECTRON_MIRROR  # Linux / macOS
+echo $env:ELECTRON_MIRROR  # Windows PowerShell
 ```
 
 Requirements:
@@ -58,14 +83,14 @@ Requirements:
 A native desktop app built with WinUI 3 (Windows App SDK), featuring Windows 11 Mica backdrop effect:
 
 ```bash
-# Development mode (connects to Vite dev server)
-npm run webview2:dev
+# Development mode (compile TypeScript and watch Vite)
+npm run win
 
-# Build for production (self-contained single file, no .NET runtime required)
-npm run webview2:build
+# Build for production (compile, package, generate self-contained MarkdownViewer.exe)
+npm run app:build
 ```
 
-The build output is located in `dist/webview2/`. Run `MarkdownViewer.exe` to launch.
+The build output is located in `dist/MarkdownViewer/`. Run `MarkdownViewer.exe` to launch.
 
 Requirements:
 - Node.js 20+ (same as above)
@@ -79,9 +104,10 @@ winget install OpenJS.NodeJS.LTS
 winget install Microsoft.DotNet.SDK.10
 ```
 
-Limitations:
+Notes:
 - Windows only
-- The output is `MarkdownViewer.exe` + `dist/` folder, not a single executable
+- Build process includes TypeScript compilation, Vite packaging, and .NET publishing
+- Build output is `dist/MarkdownViewer/MarkdownViewer.exe` with related resource files
 
 
 ## Usage
@@ -89,7 +115,7 @@ Limitations:
 ### Loading files
 
 - **Drag & drop** or **Open**: load a file by name (e.g. `README.md`, `diagram.puml`, `app.py`). The **preview** depends on the **suffix** of the current filename (see Features): Markdown extensions use full Markdown + MyST + diagrams; `.puml` / `.plantuml` use **whole-file PlantUML** rendering; other supported suffixes use **source preview** (escaped HTML + Prism when a grammar is available).
-- **Manual**: You can still type or paste in the editor; the default unsaved document is `document.md` (Markdown preview).
+- **Manual**: You can type or paste in the editor; the default unsaved document is `document.md` (Markdown preview).
 
 ### Preview modes (by extension)
 

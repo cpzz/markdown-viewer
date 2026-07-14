@@ -36,7 +36,7 @@ markdown-viewer.html   <- 双击在浏览器中打开
 支持热重载和 TypeScript 的开发环境：
 
 ```bash
-# 安装依赖
+# 安装依赖（可选：使用淘宝镜像加速 electron 下载）
 npm install
 
 # 启动开发服务器
@@ -46,7 +46,32 @@ npm run dev
 npm run build
 
 # 启动生产服务器
-npm start
+npm run server
+```
+
+**加速 Electron 下载**（可选，仅在默认安装速度慢时使用）：
+
+如果 `npm install` 下载 Electron 速度过慢，可设置镜像源：
+
+```bash
+# Linux / macOS
+export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+npm install
+
+# Windows PowerShell
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+npm install
+
+# Windows CMD
+set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+npm install
+```
+
+验证环境变量设置：
+
+```bash
+echo $ELECTRON_MIRROR  # Linux / macOS
+echo $env:ELECTRON_MIRROR  # Windows PowerShell
 ```
 
 环境要求：
@@ -58,14 +83,14 @@ npm start
 基于 WinUI 3 (Windows App SDK) 的原生桌面应用，支持 Windows 11 Mica 背景效果：
 
 ```bash
-# 开发模式（连接 Vite 开发服务器）
-npm run webview2:dev
+# 开发模式（编译 TypeScript 并监视 Vite）
+npm run win
 
-# 构建生产版本（自包含单文件，无需 .NET 运行时）
-npm run webview2:build
+# 构建生产版本（编译、打包，生成自包含 MarkdownViewer.exe）
+npm run app:build
 ```
 
-构建产物位于 `dist/webview2/`，运行 `MarkdownViewer.exe` 即可。
+构建产物位于 `dist/MarkdownViewer/`，运行 `MarkdownViewer.exe` 即可。
 
 环境要求：
 - Node.js 20+（同上）
@@ -79,9 +104,10 @@ winget install OpenJS.NodeJS.LTS
 winget install Microsoft.DotNet.SDK.10
 ```
 
-限制：
+注意：
 - 仅支持 Windows 平台
-- 产物为 `MarkdownViewer.exe` + `dist/` 文件夹，非单个可执行文件
+- 构建过程包括 TypeScript 编译、Vite 打包和 .NET 发布
+- 构建产物为 `dist/MarkdownViewer/MarkdownViewer.exe` 及其相关资源文件
 
 ## 使用说明
 
