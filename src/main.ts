@@ -38,12 +38,14 @@ const I18N: Record<Locale, Record<string, string>> = {
     preserve_case: "Preserve case",
     toggle_replace: "Toggle replace",
     close: "Close (Esc)",
+    close_tab: "Close tab",
     replace_one: "Replace",
     replace_all: "Replace all",
     replace_escape: "Replace escape sequences (\\n, \\t, etc.)",
     no_matches: "No matches",
     markdown_source: "Markdown source",
     preview_label: "Preview",
+    default_preview_tab: "PREVIEW",
     settings_title: "Settings",
     close_settings: "Close settings",
     fit_width: "Fit to Width",
@@ -118,12 +120,14 @@ const I18N: Record<Locale, Record<string, string>> = {
     preserve_case: "\u4fdd\u7559\u5927\u5c0f\u5199",
     toggle_replace: "\u5c55\u5f00\u66ff\u6362",
     close: "\u5173\u95ed (Esc)",
+    close_tab: "\u5173\u95ed\u6807\u7b7e\u9875",
     replace_one: "\u66ff\u6362",
     replace_all: "\u5168\u90e8\u66ff\u6362",
     replace_escape: "\u8f6c\u4e49\u5e8f\u5217\u66ff\u6362 (\\n, \\t \u7b49)",
     no_matches: "\u65e0\u5339\u914d",
     markdown_source: "Markdown \u6e90\u7801",
     preview_label: "\u9884\u89c8",
+    default_preview_tab: "PREVIEW",
     settings_title: "\u8bbe\u7f6e",
     close_settings: "\u5173\u95ed\u8bbe\u7f6e",
     fit_width: "\u9002\u5e94\u5bbd\u5ea6",
@@ -2134,6 +2138,7 @@ function mount(): void {
       <div class="controls">
         <input type="file" id="file-open" multiple hidden />
         <button type="button" id="btn-workspace" class="btn btn--icon" data-i18n="workspace" data-i18n-attr="aria-label" title="${_t("hide_workspace")}">${ICON_PANEL_LEFT_CLOSE}</button>
+        <span class="toolbar-separator"></span>
         <div class="open-menu-wrap" id="open-menu-wrap">
           <button type="button" id="btn-open-file" class="btn btn--icon" data-i18n="open_file" data-i18n-attr="aria-label,title" aria-haspopup="true" aria-expanded="false">${ICON_FOLDER_OPEN}</button>
           <div class="open-menu" id="open-menu" role="menu" hidden>
@@ -2144,18 +2149,18 @@ function mount(): void {
         <button type="button" id="btn-reopen-file" class="btn btn--icon" data-i18n="reopen_file" data-i18n-attr="aria-label,title" disabled>${ICON_REFRESH_CCW}</button>
         <button type="button" id="btn-save-file" class="btn btn--icon" data-i18n="save_file" data-i18n-attr="aria-label,title">${ICON_SAVE}</button>
         <button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">${ICON_LAYERS}</button>
-        <span class="controls-spacer"></span>
+        <span class="toolbar-separator"></span>
         <button type="button" id="btn-toggle-source" class="btn btn--icon active" aria-pressed="true" data-i18n="show_source" data-i18n-attr="aria-label" title="${_t("hide_source")}">${ICON_FILE}</button>
         <button type="button" id="btn-toggle-preview" class="btn btn--icon active" aria-pressed="true" data-i18n="show_preview" data-i18n-attr="aria-label" title="${_t("hide_preview")}">${ICON_EYE_CLOSED}</button>
+        <span class="toolbar-separator"></span>
         <button type="button" id="btn-settings" class="btn btn--icon" data-i18n="settings" data-i18n-attr="aria-label,title">${ICON_SETTINGS}</button>
         <button type="button" id="btn-lang" class="btn btn--icon" data-i18n="switch_lang" data-i18n-attr="aria-label,title">${ICON_GLOBE}</button>
+        <span class="toolbar-separator"></span>
         <button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">${ICON_LOGO}</button>
       </div>
     </header>
     <main>
       <aside class="workspace-sidebar" id="workspace-sidebar">
-        <div class="workspace-actions">
-        </div>
         <div class="workspace-list" id="workspace-list">
           <div class="workspace-empty" data-i18n="workspace_empty">No files in workspace</div>
         </div>
@@ -2198,7 +2203,6 @@ function mount(): void {
       </section>
       <div class="resizer" id="resizer"></div>
       <section class="panel" id="panel-preview">
-        <label for="preview-wrap" data-i18n="preview_label">Preview</label>
         <div class="find-replace-bar find-bar--preview" id="preview-find-bar">
           <div class="fr-rows">
             <div class="find-replace-row">
@@ -2217,6 +2221,7 @@ function mount(): void {
             </div>
           </div>
         </div>
+        <div class="preview-tabs" id="preview-tabs" role="tablist" aria-label="${_t("preview_label")}"></div>
         <div id="preview-wrap" tabindex="-1">
           <article id="preview"></article>
         </div>
@@ -2291,7 +2296,10 @@ function mount(): void {
   const btnSettingsClose = document.querySelector<HTMLButtonElement>("#btn-settings-close")!;
   const btnLang = document.querySelector<HTMLButtonElement>("#btn-lang")!;
 
-  btnLang.addEventListener("click", () => setLocale(currentLocale === "en" ? "zh" : "en"));
+  btnLang.addEventListener("click", () => {
+    setLocale(currentLocale === "en" ? "zh" : "en");
+    renderPreviewTabs();
+  });
   applyI18n();
 
   // ── Workspace sidebar ────────────────────────────────────
@@ -2314,6 +2322,37 @@ function mount(): void {
   let workspaceVisible = true;
   let workspaceWidth = "";
 
+  function naturalCompare(a: string, b: string): number {
+    const ax: (string | number)[] = [];
+    const bx: (string | number)[] = [];
+    a.replace(/(\d+)|(\D+)/g, (_, $1, $2) => { ax.push($1 ? parseInt($1, 10) : $2.toLowerCase()); return ""; });
+    b.replace(/(\d+)|(\D+)/g, (_, $1, $2) => { bx.push($1 ? parseInt($1, 10) : $2.toLowerCase()); return ""; });
+    while (ax.length && bx.length) {
+      const an = ax.shift()!;
+      const bn = bx.shift()!;
+      const nn = (typeof an === "number" ? 1 : 0) - (typeof bn === "number" ? 1 : 0);
+      if (nn !== 0) return nn;
+      if (an < bn) return -1;
+      if (an > bn) return 1;
+    }
+    return ax.length - bx.length;
+  }
+
+  function sortNodes(nodes: WorkspaceTreeNode[]): void {
+    nodes.sort((a, b) => {
+      // 目录始终在文件之前
+      if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+      return naturalCompare(a.name, b.name);
+    });
+    
+    // 递归排序子节点
+    for (const node of nodes) {
+      if (node.kind === "directory" && node.children.length > 0) {
+        sortNodes(node.children);
+      }
+    }
+  }
+
   function updateWorkspaceVisibility(): void {
     workspaceSidebar.classList.toggle("hidden", !workspaceVisible);
     // Clear inline width when hidden so the CSS `.hidden { width: 0 }` rule can
@@ -2329,6 +2368,7 @@ function mount(): void {
       workspaceList.innerHTML = `<div class="workspace-empty" data-i18n="workspace_empty">${_t("workspace_empty")}</div>`;
       return;
     }
+    sortNodes(workspaceTree);
     workspaceList.innerHTML = "";
     for (const node of workspaceTree) {
       renderTreeNode(node, 0);
@@ -3013,12 +3053,88 @@ function mount(): void {
   /** Path of the active file relative to `workspaceRootHandle`, using `/` separators. */
   let currentRelPathInWorkspace: string | null = null;
   let fileOpened = false;
+  const DEFAULT_PREVIEW_TAB_ID = "default";
+
+  interface PreviewLinkedTab {
+    id: string;
+    workspacePath: string;
+    label: string;
+    handle: FileSystemFileHandle;
+    sourceText: string;
+    xmindRenderContent: string | null;
+  }
+
+  const previewTabs = document.querySelector<HTMLElement>("#preview-tabs")!;
+  let linkedPreviewTabs: PreviewLinkedTab[] = [];
+  let activePreviewTabId = DEFAULT_PREVIEW_TAB_ID;
 
   function markFileOpened(): void {
     if (!fileOpened) {
       fileOpened = true;
     }
   }
+
+  function getActiveLinkedPreviewTab(): PreviewLinkedTab | null {
+    return linkedPreviewTabs.find((tab) => tab.id === activePreviewTabId) ?? null;
+  }
+
+  function activateDefaultPreviewTab(): void {
+    activePreviewTabId = DEFAULT_PREVIEW_TAB_ID;
+    renderPreviewTabs();
+  }
+
+  function renderPreviewTabs(): void {
+    previewTabs.innerHTML = "";
+
+    const defaultTab = document.createElement("button");
+    defaultTab.type = "button";
+    defaultTab.className = "preview-tab preview-tab--default";
+    defaultTab.classList.toggle("active", activePreviewTabId === DEFAULT_PREVIEW_TAB_ID);
+    if (linkedPreviewTabs.length > 0) {
+      defaultTab.classList.add("preview-tab--highlight");
+    }
+    defaultTab.setAttribute("role", "tab");
+    defaultTab.setAttribute("aria-selected", (activePreviewTabId === DEFAULT_PREVIEW_TAB_ID).toString());
+    defaultTab.textContent = _t("default_preview_tab");
+    defaultTab.addEventListener("click", () => {
+      activePreviewTabId = DEFAULT_PREVIEW_TAB_ID;
+      renderPreviewTabs();
+      scheduleRender();
+    });
+    previewTabs.appendChild(defaultTab);
+
+    for (const tab of linkedPreviewTabs) {
+      const tabEl = document.createElement("button");
+      tabEl.type = "button";
+      tabEl.className = "preview-tab";
+      tabEl.classList.toggle("active", tab.id === activePreviewTabId);
+      tabEl.setAttribute("role", "tab");
+      tabEl.setAttribute("aria-selected", (tab.id === activePreviewTabId).toString());
+      tabEl.title = tab.workspacePath;
+      tabEl.innerHTML = `<span class="preview-tab__label">${escapeHtml(tab.label)}</span><span class="preview-tab__close" title="${_t("close_tab")}" aria-label="${_t("close_tab")}">${ICON_X}</span>`;
+      tabEl.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest(".preview-tab__close")) return;
+        activePreviewTabId = tab.id;
+        renderPreviewTabs();
+        scheduleRender();
+      });
+      tabEl.querySelector<HTMLElement>(".preview-tab__close")!.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = linkedPreviewTabs.findIndex((item) => item.id === tab.id);
+        if (idx === -1) return;
+        linkedPreviewTabs.splice(idx, 1);
+        if (activePreviewTabId === tab.id) {
+          activePreviewTabId = linkedPreviewTabs[Math.max(0, idx - 1)]?.id ?? DEFAULT_PREVIEW_TAB_ID;
+        }
+        renderPreviewTabs();
+        scheduleRender();
+      });
+      previewTabs.appendChild(tabEl);
+    }
+  }
+
+  renderPreviewTabs();
 
   // Only set default if textarea is empty (browser may restore content on tab copy)
   if (!source.value) {
@@ -3165,17 +3281,17 @@ function mount(): void {
     });
   }
 
-  async function render(): Promise<void> {
+  async function renderDocument(docFileName: string, docSource: string, docXmindRenderContent: string | null): Promise<void> {
     headingCount = {};
     mermaidQueue = [];
 
-    if (isPlantUmlDocumentPath(currentFileName)) {
+    if (isPlantUmlDocumentPath(docFileName)) {
       const sanitizeOpts = {
         ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
         ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
       };
       try {
-        const fig = renderPlantUmlBlock(source.value, plantumlOutputFormat);
+        const fig = renderPlantUmlBlock(docSource, plantumlOutputFormat);
         preview.innerHTML = DOMPurify.sanitize(`<article class="preview-plantuml-file">${fig}</article>`, sanitizeOpts);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -3188,9 +3304,9 @@ function mount(): void {
       return;
     }
 
-    if (!isMarkdownDocumentPath(currentFileName) && !isXmindDocumentPath(currentFileName)) {
-      const lang = prismLangForSourcePreview(currentFileName, source.value);
-      let displayContent = source.value;
+    if (!isMarkdownDocumentPath(docFileName) && !isXmindDocumentPath(docFileName)) {
+      const lang = prismLangForSourcePreview(docFileName, docSource);
+      let displayContent = docSource;
       const langClass = lang ? ` class="language-${lang}"` : "";
 
       // Check if code is minified (has very long lines)
@@ -3278,9 +3394,9 @@ function mount(): void {
       return;
     }
 
-    const markdownContent = isXmindDocumentPath(currentFileName) && xmindRenderContent != null
-      ? xmindRenderContent
-      : source.value;
+    const markdownContent = isXmindDocumentPath(docFileName) && docXmindRenderContent != null
+      ? docXmindRenderContent
+      : docSource;
     const preprocessed = preprocessMyST(markdownContent);
     const raw = await marked.parse(preprocessed);
     preview.innerHTML = DOMPurify.sanitize(raw, {
@@ -3400,6 +3516,15 @@ function mount(): void {
 
     activatePlantumlBlocks();
     if (previewFindBar.classList.contains("visible")) pvFindAll();
+  }
+
+  async function render(): Promise<void> {
+    const linkedTab = getActiveLinkedPreviewTab();
+    if (linkedTab) {
+      await renderDocument(linkedTab.workspacePath, linkedTab.sourceText, linkedTab.xmindRenderContent);
+      return;
+    }
+    await renderDocument(currentFileName, source.value, xmindRenderContent);
   }
 
   let t: ReturnType<typeof setTimeout> | undefined;
@@ -3558,7 +3683,99 @@ function mount(): void {
     }
     // Auto-add to workspace
     addFileNode(h.name, h);
+    activateDefaultPreviewTab();
     scheduleRender();
+  }
+
+  async function findWorkspaceFileByHandle(targetHandle: FileSystemFileHandle): Promise<FileSystemFileHandle | null> {
+    async function visit(nodes: WorkspaceTreeNode[]): Promise<FileSystemFileHandle | null> {
+      for (const node of nodes) {
+        if (node.kind === "file") {
+          const handle = node.handle as FileSystemFileHandle;
+          if (typeof handle.isSameEntry === "function" && await handle.isSameEntry(targetHandle)) return handle;
+          if (handle === targetHandle) return handle;
+        } else {
+          const found = await visit(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    return visit(workspaceTree);
+  }
+
+  function getWorkspaceNodePath(targetHandle: FileSystemHandle): string | null {
+    function visit(nodes: WorkspaceTreeNode[], parentPath: string): string | null {
+      for (const node of nodes) {
+        const nodePath = parentPath ? `${parentPath}/${node.name}` : node.name;
+        if (node.handle === targetHandle) return nodePath;
+        if (node.kind === "directory") {
+          const found = visit(node.children, nodePath);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    return visit(workspaceTree, "");
+  }
+
+  function findWorkspaceFileByPath(workspacePath: string): FileSystemFileHandle | null {
+    const normalized = workspacePath.replaceAll("\\", "/");
+    function visit(nodes: WorkspaceTreeNode[], parentPath: string): FileSystemFileHandle | null {
+      for (const node of nodes) {
+        const nodePath = parentPath ? `${parentPath}/${node.name}` : node.name;
+        if (node.kind === "file" && nodePath === normalized) return node.handle as FileSystemFileHandle;
+        if (node.kind === "directory") {
+          const found = visit(node.children, nodePath);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    return visit(workspaceTree, "");
+  }
+
+  async function openLinkedFileInPreviewTab(workspacePath: string, targetHandle: FileSystemFileHandle): Promise<void> {
+    const existing = linkedPreviewTabs.find((tab) => tab.workspacePath === workspacePath);
+    if (existing) {
+      activePreviewTabId = existing.id;
+      renderPreviewTabs();
+      scheduleRender();
+      return;
+    }
+
+    const file = await targetHandle.getFile();
+    let text: string;
+    let linkedXmindRenderContent: string | null = null;
+    if (isXmindDocumentPath(workspacePath)) {
+      const prevXmindRenderContent = xmindRenderContent;
+      const buf = await file.arrayBuffer();
+      text = await parseXmindToMarkdown(buf);
+      linkedXmindRenderContent = xmindRenderContent;
+      xmindRenderContent = prevXmindRenderContent;
+    } else {
+      text = await file.text();
+    }
+
+    const tab: PreviewLinkedTab = {
+      id: crypto.randomUUID(),
+      workspacePath,
+      label: pathBasename(workspacePath),
+      handle: targetHandle,
+      sourceText: text,
+      xmindRenderContent: linkedXmindRenderContent,
+    };
+    linkedPreviewTabs.push(tab);
+    activePreviewTabId = tab.id;
+    renderPreviewTabs();
+    scheduleRender();
+  }
+
+  function getActivePreviewLinkBasePath(): string | null {
+    const linkedPath = getActiveLinkedPreviewTab()?.workspacePath;
+    if (linkedPath) return linkedPath;
+    if (currentRelPathInWorkspace) return currentRelPathInWorkspace;
+    return fileHandle ? getWorkspaceNodePath(fileHandle) : null;
   }
 
   async function consumePendingTransferFromUrl(): Promise<void> {
@@ -3633,17 +3850,32 @@ function mount(): void {
       e.preventDefault();
       void (async () => {
         try {
-          if (!(await ensureWorkspaceForRelativeLinks())) return;
-          const base = currentRelPathInWorkspace;
-          if (!base || !workspaceRootHandle) return;
+          const base = getActivePreviewLinkBasePath();
+          if (!base) {
+            if (!(await ensureWorkspaceForRelativeLinks())) return;
+          }
+          const linkBase = getActivePreviewLinkBasePath();
+          if (!linkBase) return;
           const pathPart = href.split("#")[0] ?? "";
-          const resolved = resolveRelativeLinkToWorkspacePath(base, pathPart);
+          const resolved = resolveRelativeLinkToWorkspacePath(linkBase, pathPart);
           if (!resolved) {
             alert(_t("link_unresolved"));
             return;
           }
+          const listedHandle = findWorkspaceFileByPath(resolved);
+          if (listedHandle) {
+            await openLinkedFileInPreviewTab(resolved, listedHandle);
+            return;
+          }
+          if (!(await ensureWorkspaceForRelativeLinks())) return;
+          if (!workspaceRootHandle) return;
           const target = await getFileHandleForRelativePath(workspaceRootHandle, resolved);
-          await openLinkedFileInNewWindow(target);
+          const workspaceHandle = await findWorkspaceFileByHandle(target);
+          if (workspaceHandle) {
+            await openLinkedFileInPreviewTab(resolved, workspaceHandle);
+          } else {
+            await openLinkedFileInNewWindow(target);
+          }
         } catch (err) {
           console.error(err);
           alert(
@@ -3669,7 +3901,7 @@ function mount(): void {
         source.value = text;
         lastSavedContent = text;
         markFileOpened();
-        
+        activateDefaultPreviewTab();
         scheduleRender();
       });
     } else {
@@ -3677,7 +3909,7 @@ function mount(): void {
         source.value = text;
         lastSavedContent = text;
         markFileOpened();
-        
+        activateDefaultPreviewTab();
         scheduleRender();
       });
     }
@@ -3696,7 +3928,7 @@ function mount(): void {
         source.value = content;
         lastSavedContent = content;
         markFileOpened();
-        
+        activateDefaultPreviewTab();
         scheduleRender();
         updateReopenButton();
       } catch (e) {
@@ -3728,7 +3960,7 @@ function mount(): void {
         source.value = text;
         lastSavedContent = text;
         markFileOpened();
-        
+        activateDefaultPreviewTab();
         scheduleRender();
         updateReopenButton();
         await refreshWorkspacePath();
@@ -3759,7 +3991,7 @@ function mount(): void {
         source.value = content;
         lastSavedContent = content;
         markFileOpened();
-        
+        activateDefaultPreviewTab();
         scheduleRender();
       } catch (e) {
         console.error("Could not reopen file in Electron:", e);
@@ -3788,7 +4020,7 @@ function mount(): void {
       source.value = text;
       lastSavedContent = text;
       markFileOpened();
-      
+      activateDefaultPreviewTab();
       scheduleRender();
       await refreshWorkspacePath();
     } catch (e) {
@@ -4052,7 +4284,7 @@ function mount(): void {
             source.value = text;
             lastSavedContent = text;
             markFileOpened();
-            
+            activateDefaultPreviewTab();
             scheduleRender();
             updateReopenButton();
             await refreshWorkspacePath();
