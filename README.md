@@ -92,6 +92,12 @@ npm run app:build
 
 The build output is located in `dist/MarkdownViewer/`. Run `MarkdownViewer.exe` to launch.
 
+**Windows Shortcut** (run in background without a visible terminal window):
+
+```
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -WindowStyle Hidden -Command "& { cd 'D:\workspace\markdown-viewer'; npm.cmd run win }"
+```
+
 Requirements:
 - Node.js 20+ (same as above)
 - **.NET 10 SDK** ([download](https://dotnet.microsoft.com/download/dotnet/10.0))

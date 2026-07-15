@@ -92,6 +92,12 @@ npm run app:build
 
 构建产物位于 `dist/MarkdownViewer/`，运行 `MarkdownViewer.exe` 即可。
 
+**Windows 快捷方式**（后台运行，不显示终端窗口）：
+
+```
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -WindowStyle Hidden -Command "& { cd 'D:\workspace\markdown-viewer'; npm.cmd run win }"
+```
+
 环境要求：
 - Node.js 20+（同上）
 - **.NET 10 SDK**（[下载](https://dotnet.microsoft.com/download/dotnet/10.0)）
