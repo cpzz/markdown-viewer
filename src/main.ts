@@ -83,6 +83,7 @@ const I18N: Record<Locale, Record<string, string>> = {
     add_file: "Add file",
     add_directory: "Add directory",
     remove_from_workspace: "Remove from workspace",
+    refresh_directory: "Refresh directory",
     open_workspace_file: "Open workspace file",
     workspace_empty: "No files in workspace",
     open_directory: "Open directory",
@@ -166,6 +167,7 @@ const I18N: Record<Locale, Record<string, string>> = {
     add_directory: "添加目录",
     open_directory: "打开目录",
     remove_from_workspace: "从工作区移除",
+    refresh_directory: "刷新目录",
     open_workspace_file: "打开工作区文件",
     workspace_empty: "工作区为空",
     workspace_save: "保存工作区",
@@ -2401,7 +2403,11 @@ function mount(): void {
       : (node.expanded
         ? `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>`
         : `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`);
-    item.innerHTML = `${expandIcon}${iconSvg}<span class="workspace-item-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span><button type="button" class="workspace-item-remove" title="${_t("remove_from_workspace")}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+    let refreshButton = "";
+    if (node.kind === "directory" && depth === 0) {
+      refreshButton = `<button type="button" class="workspace-item-refresh" title="${_t("refresh_directory")}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>`;
+    }
+    item.innerHTML = `${expandIcon}${iconSvg}<span class="workspace-item-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span>${refreshButton}<button type="button" class="workspace-item-remove" title="${_t("remove_from_workspace")}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
 
     // Clicking expand icon: toggle expand/collapse, load if needed
     const expandEl = item.querySelector<HTMLElement>(".workspace-expand-icon");
@@ -2409,7 +2415,7 @@ function mount(): void {
       expandEl.addEventListener("click", async (e) => {
         e.stopPropagation();
         node.expanded = !node.expanded;
-        if (node.expanded && node.children.length === 0) {
+        if (node.expanded) {
           await scanDirectoryChildren(node);
         }
         renderWorkspaceList();
@@ -2419,6 +2425,7 @@ function mount(): void {
     // Clicking item: file opens it, directory toggles expand/collapse
     item.addEventListener("click", async (e) => {
       if ((e.target as HTMLElement).closest(".workspace-item-remove")) return;
+      if ((e.target as HTMLElement).closest(".workspace-item-refresh")) return;
       if ((e.target as HTMLElement).closest(".workspace-expand-icon")) return;
       if (node.kind === "file") {
         const fh = node.handle as FileSystemFileHandle;
@@ -2426,7 +2433,7 @@ function mount(): void {
         renderWorkspaceList();
       } else if (node.kind === "directory") {
         node.expanded = !node.expanded;
-        if (node.expanded && node.children.length === 0) {
+        if (node.expanded) {
           await scanDirectoryChildren(node);
         }
         renderWorkspaceList();
@@ -2436,6 +2443,16 @@ function mount(): void {
     item.querySelector(".workspace-item-remove")!.addEventListener("click", () => {
       removeTreeNode(node);
     });
+
+    const refreshEl = item.querySelector<HTMLElement>(".workspace-item-refresh");
+    if (refreshEl) {
+      refreshEl.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        await scanDirectoryChildren(node);
+        renderWorkspaceList();
+      });
+    }
 
     workspaceList.appendChild(item);
 

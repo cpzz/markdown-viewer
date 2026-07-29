@@ -379,7 +379,8 @@ header h1 {
   white-space: nowrap;
 }
 
-.workspace-item-remove {
+.workspace-item-remove,
+.workspace-item-refresh {
   flex-shrink: 0;
   width: 1.25rem;
   height: 1.25rem;
@@ -396,12 +397,18 @@ header h1 {
   transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 
-.workspace-item:hover .workspace-item-remove {
+.workspace-item:hover .workspace-item-remove,
+.workspace-item:hover .workspace-item-refresh {
   opacity: 1;
 }
 
 .workspace-item-remove:hover {
   background: #ff3b30;
+  color: #fff;
+}
+
+.workspace-item-refresh:hover {
+  background: var(--accent);
   color: #fff;
 }
 
