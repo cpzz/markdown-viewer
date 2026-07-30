@@ -2228,7 +2228,7 @@ function mount(): void {
           </div>
         </div>
         <div class="preview-tabs" id="preview-tabs" role="tablist" aria-label="${_t("preview_label")}"></div>
-        <div id="preview-wrap" tabindex="-1">
+        <div id="preview-wrap" tabindex="0" data-i18n="preview_label" data-i18n-attr="aria-label">
           <article id="preview"></article>
         </div>
       </section>
@@ -3170,6 +3170,13 @@ function mount(): void {
     preview.classList.toggle("fit-width", fitWidthCheckbox.checked);
   });
 
+  previewWrap.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    if ((e.target as HTMLElement | null)?.closest("input, textarea, select, button, [contenteditable='true']")) return;
+    e.preventDefault();
+    previewWrap.scrollLeft += e.key === "ArrowRight" ? 80 : -80;
+  });
+
   function syncTabSizeControl(): void {
     tabSpacesNum.disabled = !tab2spacesCheckbox.checked;
   }
@@ -3297,6 +3304,7 @@ function mount(): void {
       block.addEventListener("keydown", (e: KeyboardEvent) => {
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
           e.preventDefault();
+          e.stopPropagation();
           block.scrollLeft += e.key === "ArrowRight" ? 200 : -200;
         }
       });

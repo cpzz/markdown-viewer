@@ -797,12 +797,18 @@ main.single-panel .resizer { display: none; }
   background: var(--surface);
 }
 
+#preview-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Preview typography */
 #preview {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   color: var(--fg);
   line-height: 1.47;
   letter-spacing: -0.022em;
+  min-width: 100%;
 }
 
 #preview :first-child { margin-top: 0; }
@@ -969,6 +975,11 @@ html:not([data-theme="dark"]) .token.variable {
   font-size: 0.875rem;
 }
 
+#preview:not(.fit-width) table {
+  max-width: none;
+  overflow: visible;
+}
+
 #preview th, #preview td {
   text-align: left;
   padding: 0.5rem 0.875rem;
@@ -985,11 +996,20 @@ html:not([data-theme="dark"]) .token.variable {
 
 /* Images */
 #preview img { height: auto; vertical-align: middle; border-radius: 8px; }
+#preview:not(.fit-width) img { max-width: none; }
 #preview.fit-width img { max-width: 100%; }
 #preview.fit-width table { max-width: 100%; }
 #preview.fit-width pre { max-width: 100%; }
 #preview.fit-width .code-block-wrap { max-width: 100%; }
 #preview.fit-width .plantuml-block img { max-width: 100%; }
+#preview:not(.fit-width) pre,
+#preview:not(.fit-width) .code-block-wrap,
+#preview:not(.fit-width) .plantuml-block,
+#preview:not(.fit-width) .mermaid-block {
+  max-width: none;
+  overflow: visible;
+  width: max-content;
+}
 
 /* Lists */
 #preview ul, #preview ol { padding-left: 1.5em; margin: 0.5em 0; }
@@ -1034,7 +1054,7 @@ html[data-theme="dark"] .plantuml-block img {
   overflow: auto;
   text-align: center;
 }
-.mermaid-block svg { max-width: 100%; height: auto; }
+.mermaid-block svg { max-width: none; height: auto; }
 .mermaid-error { color: #ff3b30; font-size: 0.875rem; }
 #preview.fit-width .mermaid-block svg { max-width: 100%; }
 
