@@ -3562,6 +3562,7 @@ function mount(): void {
     if (t) clearTimeout(t);
     t = setTimeout(() => {
       void render();
+      updateToolbarButtons();
     }, 120);
   }
 
@@ -3596,8 +3597,12 @@ function mount(): void {
 
   let lastSavedContent = DEFAULT_MD;
 
-  function updateReopenButton(): void {
-    btnReopenFile.disabled = !fileHandle;
+  /** 保存/刷新按钮状态：内容被修改时才使能；刷新还需有可重新加载的源。 */
+  function updateToolbarButtons(): void {
+    const modified = isContentModified();
+    btnSaveFile.disabled = !modified;
+    const canReload = isElectron ? !!electronFilePath : !!fileHandle;
+    btnReopenFile.disabled = !(modified && canReload);
   }
 
   async function refreshWorkspacePath(): Promise<void> {
@@ -3705,7 +3710,7 @@ function mount(): void {
     source.value = text;
     lastSavedContent = text;
     markFileOpened();
-    updateReopenButton();
+    updateToolbarButtons();
     await refreshWorkspacePath();
     if (!currentRelPathInWorkspace) {
       currentFileName = (file as File & { webkitRelativePath?: string }).webkitRelativePath || h.name;
@@ -3960,7 +3965,7 @@ function mount(): void {
         markFileOpened();
         activateDefaultPreviewTab();
         scheduleRender();
-        updateReopenButton();
+        updateToolbarButtons();
       } catch (e) {
         console.error('Failed to open file in Electron:', e);
       }
@@ -3992,7 +3997,7 @@ function mount(): void {
         markFileOpened();
         activateDefaultPreviewTab();
         scheduleRender();
-        updateReopenButton();
+        updateToolbarButtons();
         await refreshWorkspacePath();
         // Add all selected files to workspace
         for (let i = 0; i < handles.length; i++) {
@@ -4056,7 +4061,7 @@ function mount(): void {
     } catch (e) {
       console.error("Could not reopen file:", e);
       fileHandle = null;
-      updateReopenButton();
+      updateToolbarButtons();
       void refreshWorkspacePath();
     }
   }
@@ -4157,6 +4162,7 @@ function mount(): void {
           currentFileName = result.filePath.split('\\').pop()?.split('/').pop() || currentFileName;
           lastSavedContent = content;
           fileOpened = true;
+          updateToolbarButtons();
         }
       } catch (e) {
         console.error('Failed to save file in Electron:', e);
@@ -4175,7 +4181,7 @@ function mount(): void {
         await writable.close();
         lastSavedContent = content;
         fileOpened = true;
-        
+        updateToolbarButtons();
         return;
       } catch (e) {
         console.warn("Could not save to original file:", e);
@@ -4203,7 +4209,7 @@ function mount(): void {
         await writable.write(content);
         await writable.close();
         lastSavedContent = content;
-        updateReopenButton();
+        updateToolbarButtons();
         await refreshWorkspacePath();
         return;
       } catch (e) {
@@ -4226,7 +4232,7 @@ function mount(): void {
     URL.revokeObjectURL(url);
     lastSavedContent = content;
     fileOpened = true;
-    
+    updateToolbarButtons();
   }
 
   btnReopenFile.addEventListener("click", () => void reopenFile());
@@ -4241,7 +4247,7 @@ function mount(): void {
       if (inputPath && !inputPath.includes("fakepath")) {
         currentFileName = inputPath;
       }
-      updateReopenButton();
+      updateToolbarButtons();
       loadFileIntoEditor(file);
     }
   });
@@ -4296,7 +4302,7 @@ function mount(): void {
           if (handle && handle.kind === "directory") {
             await addDirectoryToWorkspace(handle as FileSystemDirectoryHandle);
             await refreshWorkspacePath();
-            updateReopenButton();
+            updateToolbarButtons();
             scheduleRender();
             return;
           }
@@ -4316,7 +4322,7 @@ function mount(): void {
             markFileOpened();
             activateDefaultPreviewTab();
             scheduleRender();
-            updateReopenButton();
+            updateToolbarButtons();
             await refreshWorkspacePath();
             // Auto-add file to workspace
             addFileNode(fileHandle.name, fileHandle);
@@ -4331,7 +4337,7 @@ function mount(): void {
       const file = pickMarkdownFile(e.dataTransfer?.files ?? null);
       if (file) {
         fileHandle = null;
-        updateReopenButton();
+        updateToolbarButtons();
         loadFileIntoEditor(file);
       }
     },
