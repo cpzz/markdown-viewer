@@ -2404,21 +2404,25 @@ function mount(): void {
         ? `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>`
         : `<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`);
     let refreshButton = "";
-    if (node.kind === "directory" && depth === 0) {
+    if (node.kind === "directory") {
       refreshButton = `<button type="button" class="workspace-item-refresh" title="${_t("refresh_directory")}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>`;
     }
     item.innerHTML = `${expandIcon}${iconSvg}<span class="workspace-item-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span>${refreshButton}<button type="button" class="workspace-item-remove" title="${_t("remove_from_workspace")}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+
+    const expandDirectoryNode = async (): Promise<void> => {
+      node.expanded = !node.expanded;
+      if (node.expanded) {
+        await scanDirectoryChildren(node);
+      }
+      renderWorkspaceList();
+    };
 
     // Clicking expand icon: toggle expand/collapse, load if needed
     const expandEl = item.querySelector<HTMLElement>(".workspace-expand-icon");
     if (expandEl) {
       expandEl.addEventListener("click", async (e) => {
         e.stopPropagation();
-        node.expanded = !node.expanded;
-        if (node.expanded) {
-          await scanDirectoryChildren(node);
-        }
-        renderWorkspaceList();
+        await expandDirectoryNode();
       });
     }
 
@@ -2432,11 +2436,7 @@ function mount(): void {
         await applyFileHandleOpen(fh);
         renderWorkspaceList();
       } else if (node.kind === "directory") {
-        node.expanded = !node.expanded;
-        if (node.expanded) {
-          await scanDirectoryChildren(node);
-        }
-        renderWorkspaceList();
+        await expandDirectoryNode();
       }
     });
 
@@ -3597,12 +3597,12 @@ function mount(): void {
 
   let lastSavedContent = DEFAULT_MD;
 
-  /** 保存/刷新按钮状态：内容被修改时才使能；刷新还需有可重新加载的源。 */
+  /** 保存按钮仅在修改后使能；重新打开只要有可重新加载的源就保持使能。 */
   function updateToolbarButtons(): void {
     const modified = isContentModified();
     btnSaveFile.disabled = !modified;
     const canReload = isElectron ? !!electronFilePath : !!fileHandle;
-    btnReopenFile.disabled = !(modified && canReload);
+    btnReopenFile.disabled = !canReload;
   }
 
   async function refreshWorkspacePath(): Promise<void> {
