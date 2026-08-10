@@ -1,7 +1,10 @@
 import DOMPurify from "dompurify";
 import JSZip from "jszip";
+import renderMathInElement from "katex/contrib/auto-render";
 import { marked, type Tokens } from "marked";
+import markedKatex from "marked-katex-extension";
 import * as plantumlEncoderPkg from "plantuml-encoder";
+import "katex/dist/katex.min.css";
 import "./style.css";
 
 /* ── Electron environment detection ───────────────────────────────── */
@@ -2012,6 +2015,38 @@ function preprocessMyST(markdown: string): string {
   return result;
 }
 
+function normalizeLatexForRender(math: string): string {
+  let s = math;
+  s = s
+    .replace(/\\(prod|sum|int|lim|max|min)\*\s*\{/g, "\\$1_{")
+    .replace(/(\\(?:mathbf|boldsymbol)\{[^{}]+\})\*([A-Za-z0-9]+)/g, "$1_$2")
+    .replace(/(\\[A-Za-z]+)\*([A-Za-z0-9]+)/g, "$1_$2");
+  if (/\\begin\{aligned\}/.test(s)) {
+    s = s.replace(/(^|[^\\])\\\s+&=/g, "$1\\\\\n&=");
+  }
+  if (/\\begin\{aligned\}/.test(s) && !/\\end\{aligned\}/.test(s)) {
+    s += "\\end{aligned}";
+  }
+  return s;
+}
+
+function preprocessMath(markdown: string): string {
+  return markdown.replace(
+    /\$\$([\s\S]*?)\$\$/g,
+    (_, math: string) => `\n\n$$\n${normalizeLatexForRender(math).trim()}\n$$\n\n`,
+  );
+}
+
+marked.use(markedKatex({
+  nonStandard: true,
+  throwOnError: false,
+  strict: "ignore",
+  trust: true,
+  macros: {
+    "\\Pr": "\\operatorname{Pr}",
+  },
+}));
+
 marked.use({
   renderer: {
     heading(token: Tokens.Heading): string {
@@ -2156,13 +2191,13 @@ function mount(): void {
         <button type="button" id="btn-save-file" class="btn btn--icon" data-i18n="save_file" data-i18n-attr="aria-label,title">${ICON_SAVE}</button>
         <button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">${ICON_LAYERS}</button>
         <span class="toolbar-separator"></span>
-        <button type="button" id="btn-toggle-source" class="btn btn--icon active" aria-pressed="true" data-i18n="show_source" data-i18n-attr="aria-label" title="${_t("hide_source")}">${ICON_FILE_TEXT}</button>
-        <button type="button" id="btn-toggle-preview" class="btn btn--icon active" aria-pressed="true" data-i18n="show_preview" data-i18n-attr="aria-label" title="${_t("hide_preview")}">${ICON_EYE}</button>
+        <button type="button" id="btn-toggle-source" class="btn btn--icon active" aria-pressed="true" data-i18n="show_source" data-i18n-attr="aria-label" title="${_t("hide_source")}">${ICON_FILE}</button>
+        <button type="button" id="btn-toggle-preview" class="btn btn--icon active" aria-pressed="true" data-i18n="show_preview" data-i18n-attr="aria-label" title="${_t("hide_preview")}">${ICON_EYE_CLOSED}</button>
         <span class="toolbar-separator"></span>
         <button type="button" id="btn-settings" class="btn btn--icon" data-i18n="settings" data-i18n-attr="aria-label,title">${ICON_SETTINGS}</button>
         <button type="button" id="btn-lang" class="btn btn--icon" data-i18n="switch_lang" data-i18n-attr="aria-label,title">${ICON_GLOBE}</button>
         <span class="toolbar-separator"></span>
-        <button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">${ICON_MOON}</button>
+        <button type="button" id="btn-theme" class="btn btn--icon" data-i18n="toggle_dark_mode" data-i18n-attr="aria-label,title">${ICON_SUN}</button>
       </div>
     </header>
     <main>
@@ -2540,10 +2575,13 @@ function mount(): void {
         return;
       }
     }
+    workspaceRootHandle = dir;
+    await refreshWorkspacePath();
     const node = addDirectoryNode(dir.name, dir);
     node.expanded = true;
     await scanDirectoryChildren(node);
     renderWorkspaceList();
+    scheduleRender();
   }
 
   btnWorkspace.addEventListener("click", () => {
@@ -2620,7 +2658,7 @@ function mount(): void {
   function applyTheme(dark: boolean): void {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     btnTheme.title = dark ? _t("switch_to_light") : _t("switch_to_dark");
-    btnTheme.innerHTML = dark ? ICON_MOON : ICON_SUN;
+    btnTheme.innerHTML = dark ? ICON_SUN : ICON_MOON;
     const appLogo = document.querySelector<HTMLImageElement>("#app-logo");
     if (appLogo) appLogo.src = "/logo.png";
   }
@@ -3279,7 +3317,7 @@ function mount(): void {
     btnToggleSource.classList.toggle("active");
     const active = btnToggleSource.classList.contains("active");
     btnToggleSource.setAttribute("aria-pressed", active.toString());
-    btnToggleSource.innerHTML = active ? ICON_FILE_TEXT : ICON_FILE;
+    btnToggleSource.innerHTML = active ? ICON_FILE : ICON_FILE_TEXT;
     btnToggleSource.title = active ? _t("hide_source") : _t("show_source");
     updateLayout();
   });
@@ -3288,13 +3326,134 @@ function mount(): void {
     btnTogglePreview.classList.toggle("active");
     const active = btnTogglePreview.classList.contains("active");
     btnTogglePreview.setAttribute("aria-pressed", active.toString());
-    btnTogglePreview.innerHTML = active ? ICON_EYE : ICON_EYE_CLOSED;
+    btnTogglePreview.innerHTML = active ? ICON_EYE_CLOSED : ICON_EYE;
     btnTogglePreview.title = active ? _t("hide_preview") : _t("show_preview");
     updateLayout();
   });
 
   function getMermaidTheme(): "dark" | "default" {
     return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+  }
+
+  /** Blob URLs created for local preview assets (mainly relative markdown images). */
+  let previewAssetObjectUrls: string[] = [];
+
+  function revokePreviewAssetObjectUrls(): void {
+    for (const u of previewAssetObjectUrls) {
+      URL.revokeObjectURL(u);
+    }
+    previewAssetObjectUrls = [];
+  }
+
+  function toElectronFileBaseUrl(absPath: string): string {
+    const p = absPath.replaceAll("\\", "/");
+    const dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/") + 1) : "/";
+    return dir.startsWith("/") ? `file://${dir}` : `file:///${dir}`;
+  }
+
+  function normalizeRelativeAssetPath(rawPath: string): string {
+    const p = rawPath.replaceAll("\\", "/").trim();
+    // Accept malformed ".image.png" as "./image.png".
+    if (/^\.(?![./])/.test(p)) return `./${p.slice(1)}`;
+    return p;
+  }
+
+  function buildRelativeAssetCandidates(rawPath: string): string[] {
+    const primary = normalizeRelativeAssetPath(rawPath);
+    const out = [primary];
+    const base = pathBasename(primary);
+    if (base) {
+      out.push(`../img/${base}`, `./img/${base}`, `img/${base}`);
+    }
+    return Array.from(new Set(out.filter(Boolean)));
+  }
+
+  function tryResolveElectronRelativeAssetUrl(src: string): string | null {
+    if (!isElectron || !electronFilePath) return null;
+    if (!src || src.startsWith("#") || src.startsWith("//")) return null;
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:") || src.startsWith("blob:")) return null;
+    if (hasNonHttpUrlScheme(src)) return null;
+    try {
+      return new URL(src, toElectronFileBaseUrl(electronFilePath)).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  async function patchPreviewRelativeImages(): Promise<void> {
+    const imgs = Array.from(preview.querySelectorAll<HTMLImageElement>("img[src]"));
+    if (imgs.length === 0) return;
+
+    const basePath = getActivePreviewLinkBasePath();
+    await Promise.all(
+      imgs.map(async (img) => {
+        const src = (img.getAttribute("src") ?? "").trim();
+        if (!src) return;
+
+        const electronResolved = tryResolveElectronRelativeAssetUrl(src);
+        if (electronResolved) {
+          img.setAttribute("src", electronResolved);
+          return;
+        }
+
+        if (src.startsWith("#") || src.startsWith("//")) return;
+        if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:") || src.startsWith("blob:")) return;
+        if (hasNonHttpUrlScheme(src)) return;
+
+        if (!basePath) return;
+        const pathPart = src.split("#")[0]?.split("?")[0] ?? "";
+        const candidates = buildRelativeAssetCandidates(pathPart);
+
+        let handle: FileSystemFileHandle | null = null;
+        for (const c of candidates) {
+          const resolved = resolveRelativeLinkToWorkspacePath(basePath, c);
+          if (!resolved) continue;
+          handle = findWorkspaceFileByPath(resolved);
+          if (!handle && workspaceRootHandle) {
+            try {
+              handle = await getFileHandleForRelativePath(workspaceRootHandle, resolved);
+            } catch {
+              handle = null;
+            }
+          }
+          if (handle) break;
+        }
+        if (!handle) return;
+
+        try {
+          const f = await handle.getFile();
+          const blobUrl = URL.createObjectURL(f);
+          previewAssetObjectUrls.push(blobUrl);
+          img.setAttribute("src", blobUrl);
+        } catch {
+          // Keep original src when local file cannot be read.
+        }
+      }),
+    );
+  }
+
+  function renderMathInPreview(): void {
+    try {
+      renderMathInElement(preview, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "\\[", right: "\\]", display: true },
+          { left: "${", right: "}$", display: false },
+          { left: "\\(", right: "\\)", display: false },
+          { left: "$", right: "$", display: false },
+        ],
+        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option", "svg", "text"],
+        throwOnError: false,
+        strict: "ignore",
+        trust: true,
+        preProcess: normalizeLatexForRender,
+        macros: {
+          "\\Pr": "\\operatorname{Pr}",
+        },
+      });
+    } catch (e) {
+      console.warn("KaTeX render failed:", e);
+    }
   }
 
   /** Make each plantuml-block focusable and scrollable via arrow keys. */
@@ -3311,9 +3470,17 @@ function mount(): void {
     });
   }
 
-  async function renderDocument(docFileName: string, docSource: string, docXmindRenderContent: string | null): Promise<void> {
+  let documentRenderSeq = 0;
+
+  async function renderDocument(
+    docFileName: string,
+    docSource: string,
+    docXmindRenderContent: string | null,
+    renderSeq: number,
+  ): Promise<void> {
     headingCount = {};
     mermaidQueue = [];
+    revokePreviewAssetObjectUrls();
 
     if (isPlantUmlDocumentPath(docFileName)) {
       const sanitizeOpts = {
@@ -3427,8 +3594,9 @@ function mount(): void {
     const markdownContent = isXmindDocumentPath(docFileName) && docXmindRenderContent != null
       ? docXmindRenderContent
       : docSource;
-    const preprocessed = preprocessMyST(markdownContent);
+    const preprocessed = preprocessMath(preprocessMyST(markdownContent));
     const raw = await marked.parse(preprocessed);
+    if (renderSeq !== documentRenderSeq) return;
     preview.innerHTML = DOMPurify.sanitize(raw, {
       ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "svg", "g", "path", "rect", "polyline", "line", "text", "span"],
       ADD_ATTR: [
@@ -3491,6 +3659,7 @@ function mount(): void {
     // Render Mermaid diagrams via mermaid.render() → SVG string approach (reliable across themes)
     if (mermaidQueue.length > 0) {
       const mermaid = await ensureMermaid();
+      if (renderSeq !== documentRenderSeq) return;
       mermaid.initialize({
         startOnLoad: false,
         theme: getMermaidTheme(),
@@ -3511,6 +3680,10 @@ function mount(): void {
         }
       }
     }
+
+    await patchPreviewRelativeImages();
+    if (renderSeq !== documentRenderSeq) return;
+    renderMathInPreview();
 
     // External links open in new tab
     preview.querySelectorAll("a[href]").forEach((link) => {
@@ -3549,12 +3722,13 @@ function mount(): void {
   }
 
   async function render(): Promise<void> {
+    const renderSeq = ++documentRenderSeq;
     const linkedTab = getActiveLinkedPreviewTab();
     if (linkedTab) {
-      await renderDocument(linkedTab.workspacePath, linkedTab.sourceText, linkedTab.xmindRenderContent);
+      await renderDocument(linkedTab.workspacePath, linkedTab.sourceText, linkedTab.xmindRenderContent, renderSeq);
       return;
     }
-    await renderDocument(currentFileName, source.value, xmindRenderContent);
+    await renderDocument(currentFileName, source.value, xmindRenderContent, renderSeq);
   }
 
   let t: ReturnType<typeof setTimeout> | undefined;
