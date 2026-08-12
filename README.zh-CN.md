@@ -31,6 +31,11 @@ markdown-viewer.html   <- 双击在浏览器中打开
 - 现代浏览器（Chrome、Firefox、Edge、Safari）
 - 网络连接（用于加载 CDN 库和 PlantUML 渲染）
 
+当前项目中的 LaTeX 支持范围：
+- 数学公式在浏览器端渲染（KaTeX 子集），不是完整 TeX 引擎。
+- 支持的数学定界符与常见语法包括 `$...$`、`$$...$$`、`\\(...\\)`、`\\[...\\]`，以及常见矩阵/对齐/分段等数学表达式。
+- 当前实现**不支持**完整 LaTeX 文档编译（如 `\\documentclass`、`\\usepackage`、`\\begin{document}`、参考文献/工具链等）。
+
 ## 开发环境搭建
 
 支持热重载和 TypeScript 的开发环境：
@@ -48,6 +53,8 @@ npm run build
 # 启动生产服务器
 npm run server
 ```
+
+`npm run server` 使用 `vite preview`（静态托管 `dist/`），本身不提供服务端 LaTeX 编译能力。
 
 **加速 Electron 下载**（可选，仅在默认安装速度慢时使用）：
 
@@ -237,6 +244,10 @@ Content for tab 2
 ### 方案一：单文件模式（最简单）
 
 只需将 `markdown-viewer.html` 复制到你的服务器或直接分享该文件。用户可以在任何浏览器中打开。
+
+该模式的重要说明：
+- 它是纯前端页面，受浏览器沙箱限制，不能直接调用本地 TeX 可执行文件（`xelatex`、`lualatex`、`pdflatex`、`tectonic`）。
+- 若 Web 部署需要完整 LaTeX 编译，请新增后端服务接口，编译 `.tex` 后返回 PDF/SVG/图片结果。
 
 ### 方案二：构建版本（优化版）
 

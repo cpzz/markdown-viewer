@@ -31,6 +31,11 @@ Requirements:
 - Modern browser (Chrome, Firefox, Edge, Safari)
 - Internet connection (for loading CDN libraries and PlantUML rendering)
 
+LaTeX support in the current project:
+- Math preview is rendered in-browser (KaTeX subset), not a full TeX engine.
+- Supported math delimiters and common syntax include `$...$`, `$$...$$`, `\\(...\\)`, `\\[...\\]`, plus common matrix/aligned/cases-style math expressions.
+- Full LaTeX document compilation (`\\documentclass`, `\\usepackage`, `\\begin{document}`, bibliography/workflow toolchains, etc.) is **not** available in the current implementation.
+
 ## Development Setup
 
 For development with hot-reload and TypeScript:
@@ -48,6 +53,8 @@ npm run build
 # Start production server
 npm run server
 ```
+
+`npm run server` uses `vite preview` (static web hosting of `dist/`) and does not provide server-side LaTeX compilation by itself.
 
 **Speeding up Electron download** (optional, only if default download is slow):
 
@@ -238,6 +245,10 @@ Right column (75% width)
 ### Option 1: Standalone (Simplest)
 
 Just copy `markdown-viewer.html` to your server or share the file directly. Users can open it in any browser.
+
+Important for this mode:
+- It is a client-only page, so it cannot invoke local TeX binaries (`xelatex`, `lualatex`, `pdflatex`, `tectonic`) from the browser sandbox.
+- If you need full LaTeX compilation on web deployments, add a backend service endpoint that compiles `.tex` and returns PDF/SVG/image output.
 
 ### Option 2: Built Version (Optimized)
 

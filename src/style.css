@@ -1058,6 +1058,37 @@ html[data-theme="dark"] .plantuml-block img {
 .mermaid-error { color: #ff3b30; font-size: 0.875rem; }
 #preview.fit-width .mermaid-block svg { max-width: 100%; }
 
+.latex-lines-block {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-diagram);
+  overflow: auto;
+}
+
+.latex-line + .latex-line,
+.latex-line + .latex-line--raw,
+.latex-line--raw + .latex-line,
+.latex-line--raw + .latex-line--raw {
+  margin-top: 0.5rem;
+}
+
+.latex-lines__spacer {
+  height: 0.5rem;
+}
+
+.latex-line {
+  min-width: fit-content;
+}
+
+#preview .latex-line--raw {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--bg-code);
+}
+
 /* MyST Tab Set */
 .myst-tab-set {
   margin: 1rem 0;

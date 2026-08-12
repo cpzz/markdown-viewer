@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
 import JSZip from "jszip";
+import katex from "katex";
 import renderMathInElement from "katex/contrib/auto-render";
 import { marked, type Tokens } from "marked";
 import markedKatex from "marked-katex-extension";
@@ -311,6 +312,43 @@ const CODE_BLOCK_CHECK_ICON = `<span class="code-block__copy-done" aria-hidden="
 
 function codeBlockWithCopyButton(langClass: string, escapedBody: string): string {
   return `<div class="code-block-wrap"><div class="code-block__toolbar"><button type="button" class="code-block__copy btn btn--icon" aria-label="${_t("copy_code")}" title="${_t("copy_code")}">${CODE_BLOCK_CLIPBOARD_ICON}${CODE_BLOCK_CHECK_ICON}</button></div><pre><code${langClass}>${escapedBody}</code></pre></div>`;
+}
+
+function tryRenderLatexExpression(source: string): { ok: boolean; html: string } {
+  const html = katex.renderToString(normalizeLatexForRender(source.trim()), {
+    displayMode: true,
+    throwOnError: false,
+    strict: "ignore",
+    trust: true,
+    macros: {
+      "\\Pr": "\\operatorname{Pr}",
+    },
+  });
+
+  return { ok: !html.includes("katex-error"), html };
+}
+
+function looksLikeWholeLatexEnvironment(source: string): boolean {
+  return /\\begin\{[^}]+\}[\s\S]*\\end\{[^}]+\}/.test(source.trim());
+}
+
+function renderLatexLinesBlock(source: string): string {
+  if (looksLikeWholeLatexEnvironment(source)) {
+    const whole = tryRenderLatexExpression(source);
+    if (whole.ok) {
+      return `<figure class="latex-lines-block"><div class="latex-line">${whole.html}</div></figure>`;
+    }
+  }
+
+  const lines = source.replace(/\r\n/g, "\n").split("\n");
+  const rendered = lines.map((line) => {
+    if (!line.trim()) return `<div class="latex-lines__spacer" aria-hidden="true"></div>`;
+    const item = tryRenderLatexExpression(line);
+    if (item.ok) return `<div class="latex-line">${item.html}</div>`;
+    return `<pre class="latex-line latex-line--raw"><code>${escapeHtml(line)}</code></pre>`;
+  }).join("");
+
+  return `<figure class="latex-lines-block">${rendered}</figure>`;
 }
 
 /** File path / name → basename (handles `/` and `\\`). */
@@ -2031,10 +2069,32 @@ function normalizeLatexForRender(math: string): string {
 }
 
 function preprocessMath(markdown: string): string {
-  return markdown.replace(
-    /\$\$([\s\S]*?)\$\$/g,
-    (_, math: string) => `\n\n$$\n${normalizeLatexForRender(math).trim()}\n$$\n\n`,
-  );
+  const fencedBlocks: string[] = [];
+  const inlineCode: string[] = [];
+
+  let text = markdown
+    .replace(/```[\s\S]*?```/g, (block) => {
+      const i = fencedBlocks.push(block) - 1;
+      return `\u0000FENCED${i}\u0000`;
+    })
+    .replace(/`[^`\n]+`/g, (block) => {
+      const i = inlineCode.push(block) - 1;
+      return `\u0000INLINECODE${i}\u0000`;
+    });
+
+  text = text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, math: string) => `\n\n$$\n${normalizeLatexForRender(math).trim()}\n$$\n\n`)
+    .replace(/\\\(([^\n]*?)\\\)/g, (_, math: string) => "${" + normalizeLatexForRender(math).trim() + "}$")
+    .replace(
+      /\$\$([\s\S]*?)\$\$/g,
+      (_, math: string) => `\n\n$$\n${normalizeLatexForRender(math).trim()}\n$$\n\n`,
+    );
+
+  text = text
+    .replace(/\u0000INLINECODE(\d+)\u0000/g, (_, i: string) => inlineCode[Number(i)] ?? "")
+    .replace(/\u0000FENCED(\d+)\u0000/g, (_, i: string) => fencedBlocks[Number(i)] ?? "");
+
+  return text;
 }
 
 marked.use(markedKatex({
@@ -2077,6 +2137,9 @@ marked.use({
         const id = `mermaid-block-${mermaidQueue.length}`;
         mermaidQueue.push({ id, source: token.text });
         return `<figure class="mermaid-block" id="${id}"></figure>`;
+      }
+      if (lang === "latex" || lang === "tex") {
+        return renderLatexLinesBlock(token.text);
       }
       const langClass = lang ? ` class="language-${lang}"` : "";
       const escaped = escapeHtml(token.text);
