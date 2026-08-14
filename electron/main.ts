@@ -22,6 +22,36 @@ function createWindow() {
     },
   });
 
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[electron-lifecycle] render-process-gone', {
+      at: new Date().toISOString(),
+      reason: details.reason,
+      exitCode: details.exitCode,
+    });
+  });
+
+  mainWindow.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.warn('[electron-lifecycle] main-frame-navigation', {
+      at: new Date().toISOString(),
+      url,
+      isInPlace,
+    });
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.warn('[electron-lifecycle] did-finish-load', {
+      at: new Date().toISOString(),
+      url: mainWindow?.webContents.getURL(),
+    });
+  });
+
+  mainWindow.on('unresponsive', () => {
+    console.error('[electron-lifecycle] window-unresponsive', {
+      at: new Date().toISOString(),
+    });
+  });
+
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {

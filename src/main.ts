@@ -3800,6 +3800,7 @@ function mount(): void {
     t = setTimeout(() => {
       void render();
       updateToolbarButtons();
+      saveElectronSession();
     }, 120);
   }
 
@@ -3841,6 +3842,71 @@ function mount(): void {
     const canReload = isElectron ? !!electronFilePath : !!fileHandle;
     btnReopenFile.disabled = !canReload;
   }
+
+  /** Electron 渲染进程会因开发期热重载、主进程重启或崩溃而整页重载，这里保留当前编辑会话。 */
+  const ELECTRON_SESSION_KEY = "md-viewer-electron-session";
+  const ELECTRON_SESSION_MAX_CHARS = 2_000_000;
+
+  interface ElectronSessionState {
+    filePath: string | null;
+    fileName: string;
+    content: string;
+    savedContent: string;
+    xmindRenderContent: string | null;
+    scrollTop: number;
+  }
+
+  function saveElectronSession(): void {
+    if (!isElectron) return;
+    try {
+      if (!electronFilePath && !isContentModified()) {
+        localStorage.removeItem(ELECTRON_SESSION_KEY);
+        return;
+      }
+      if (source.value.length > ELECTRON_SESSION_MAX_CHARS) return;
+      const state: ElectronSessionState = {
+        filePath: electronFilePath,
+        fileName: currentFileName,
+        content: source.value,
+        savedContent: lastSavedContent,
+        xmindRenderContent,
+        scrollTop: source.scrollTop,
+      };
+      localStorage.setItem(ELECTRON_SESSION_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn("Could not persist Electron session:", e);
+    }
+  }
+
+  function restoreElectronSession(): void {
+    if (!isElectron) return;
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(ELECTRON_SESSION_KEY);
+    } catch (e) {
+      console.warn("Could not read Electron session:", e);
+    }
+    if (!raw) return;
+    try {
+      const state = JSON.parse(raw) as Partial<ElectronSessionState>;
+      if (typeof state.content !== "string") return;
+      electronFilePath = state.filePath ?? null;
+      currentFileName = state.fileName || currentFileName;
+      source.value = state.content;
+      lastSavedContent = typeof state.savedContent === "string" ? state.savedContent : state.content;
+      xmindRenderContent = state.xmindRenderContent ?? null;
+      if (electronFilePath) markFileOpened();
+      source.scrollTop = state.scrollTop ?? 0;
+      activateDefaultPreviewTab();
+      scheduleRender();
+      updateToolbarButtons();
+    } catch (e) {
+      console.warn("Could not restore Electron session:", e);
+    }
+  }
+
+  restoreElectronSession();
+  window.addEventListener("beforeunload", saveElectronSession);
 
   async function refreshWorkspacePath(): Promise<void> {
     if (!fileHandle) {
@@ -4400,6 +4466,7 @@ function mount(): void {
           lastSavedContent = content;
           fileOpened = true;
           updateToolbarButtons();
+          saveElectronSession();
         }
       } catch (e) {
         console.error('Failed to save file in Electron:', e);
