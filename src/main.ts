@@ -1296,6 +1296,45 @@ function xmindXmlToMermaid(xmlText: string): string {
 
 const MDV_TRANSFER_DB = "mdv-fs-transfer";
 const MDV_TRANSFER_STORE = "pending";
+const MDV_WORKSPACE_STORE = "workspace";
+const MDV_WORKSPACE_SESSION_PARAM = "mdvSession";
+const MDV_WORKSPACE_SESSION_STORAGE_KEY = "md-viewer-workspace-session";
+let isNewWorkspaceSession = false;
+let clonedWorkspaceSessionId: string | null = null;
+
+function getWorkspaceSessionId(): string {
+  const querySessionId = new URLSearchParams(window.location.search).get(MDV_WORKSPACE_SESSION_PARAM);
+  if (querySessionId) {
+    isNewWorkspaceSession = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY) !== querySessionId;
+    sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, querySessionId);
+    return querySessionId;
+  }
+  const storedSessionId = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY);
+  const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  if (storedSessionId && navigation?.type !== "navigate") return storedSessionId;
+  if (storedSessionId && navigation?.type === "navigate") clonedWorkspaceSessionId = storedSessionId;
+  const sessionId = crypto.randomUUID();
+  isNewWorkspaceSession = true;
+  sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, sessionId);
+  return sessionId;
+}
+
+const workspaceSessionId = getWorkspaceSessionId();
+
+interface PersistedWorkspaceState {
+  entries: Array<{
+    name: string;
+    kind: "file" | "directory";
+    handle: FileSystemHandle;
+    expanded: boolean;
+  }>;
+  rootHandle: FileSystemDirectoryHandle | null;
+  currentFileHandle: FileSystemFileHandle | null;
+  currentFileName: string;
+  currentRelPath: string | null;
+  savedContent: string;
+  content: string;
+}
 
 function posixDirname(p: string): string {
   const n = p.replaceAll("\\", "/").replace(/\/+$/, "");
@@ -1354,15 +1393,46 @@ function hasNonHttpUrlScheme(href: string): boolean {
 
 function idbOpenTransferDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(MDV_TRANSFER_DB, 1);
+    const req = indexedDB.open(MDV_TRANSFER_DB, 2);
     req.onerror = () => reject(req.error ?? new Error("indexedDB.open failed"));
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(MDV_TRANSFER_STORE)) {
         req.result.createObjectStore(MDV_TRANSFER_STORE);
       }
+      if (!req.result.objectStoreNames.contains(MDV_WORKSPACE_STORE)) {
+        req.result.createObjectStore(MDV_WORKSPACE_STORE);
+      }
     };
     req.onsuccess = () => resolve(req.result);
   });
+}
+
+async function idbPutWorkspace(state: PersistedWorkspaceState, sessionId = workspaceSessionId): Promise<void> {
+  const db = await idbOpenTransferDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(MDV_WORKSPACE_STORE, "readwrite");
+      tx.objectStore(MDV_WORKSPACE_STORE).put(state, sessionId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error("workspace put failed"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function idbGetWorkspace(sessionId = workspaceSessionId): Promise<PersistedWorkspaceState | undefined> {
+  const db = await idbOpenTransferDb();
+  try {
+    return await new Promise<PersistedWorkspaceState | undefined>((resolve, reject) => {
+      const tx = db.transaction(MDV_WORKSPACE_STORE, "readonly");
+      const request = tx.objectStore(MDV_WORKSPACE_STORE).get(sessionId);
+      request.onsuccess = () => resolve(request.result as PersistedWorkspaceState | undefined);
+      request.onerror = () => reject(request.error ?? new Error("workspace get failed"));
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function idbPutFileHandle(id: string, handle: FileSystemFileHandle): Promise<void> {
@@ -2513,6 +2583,7 @@ function mount(): void {
         await scanDirectoryChildren(node);
       }
       renderWorkspaceList();
+      await persistWebWorkspace();
     };
 
     // Clicking expand icon: toggle expand/collapse, load if needed
@@ -2573,12 +2644,14 @@ function mount(): void {
     };
     removeFrom(workspaceTree);
     renderWorkspaceList();
+    void persistWebWorkspace();
   }
 
   function addFileNode(name: string, handle: FileSystemFileHandle): void {
     if (findNodeByHandle(workspaceTree, handle)) return;
     workspaceTree.push({ name, kind: "file", handle, children: [], expanded: false });
     renderWorkspaceList();
+    void persistWebWorkspace();
   }
 
   function addDirectoryNode(name: string, handle: FileSystemDirectoryHandle): WorkspaceTreeNode {
@@ -2587,7 +2660,56 @@ function mount(): void {
     const node: WorkspaceTreeNode = { name, kind: "directory", handle, children: [], expanded: false };
     workspaceTree.push(node);
     renderWorkspaceList();
+    void persistWebWorkspace();
     return node;
+  }
+
+  async function persistWebWorkspace(): Promise<void> {
+    try {
+      await idbPutWorkspace({
+        entries: workspaceTree.map(({ name, kind, handle, expanded }) => ({ name, kind, handle, expanded })),
+        rootHandle: workspaceRootHandle,
+        currentFileHandle: fileHandle,
+        currentFileName,
+        currentRelPath: currentRelPathInWorkspace,
+        savedContent: lastSavedContent,
+        content: source.value,
+      });
+    } catch (e) {
+      console.warn("Could not persist workspace:", e);
+    }
+  }
+
+  async function restoreWebWorkspace(): Promise<void> {
+    try {
+      const state = await idbGetWorkspace(clonedWorkspaceSessionId ?? workspaceSessionId);
+      if (!state?.entries.length) return;
+      if (clonedWorkspaceSessionId) await idbPutWorkspace(state);
+      workspaceRootHandle = state.rootHandle ?? null;
+      fileHandle = state.currentFileHandle ?? null;
+      currentFileName = state.currentFileName || currentFileName;
+      currentRelPathInWorkspace = state.currentRelPath ?? null;
+      if (typeof state.savedContent === "string") lastSavedContent = state.savedContent;
+      if (typeof state.content === "string") source.value = state.content;
+      workspaceTree = state.entries.map(({ name, kind, handle, expanded }) => ({
+        name,
+        kind,
+        handle,
+        children: [],
+        expanded,
+      }));
+      renderWorkspaceList();
+      for (const node of workspaceTree) {
+        if (node.kind === "directory" && node.expanded) {
+          await scanDirectoryChildren(node);
+        }
+      }
+      renderWorkspaceList();
+      await refreshWorkspacePath();
+      updateToolbarButtons();
+    } catch (e) {
+      console.warn("Could not restore workspace:", e);
+    }
   }
 
   function findNodeByHandle(nodes: WorkspaceTreeNode[], handle: FileSystemHandle): WorkspaceTreeNode | null {
@@ -2644,6 +2766,7 @@ function mount(): void {
     node.expanded = true;
     await scanDirectoryChildren(node);
     renderWorkspaceList();
+    await persistWebWorkspace();
     scheduleRender();
   }
 
@@ -2702,6 +2825,7 @@ function mount(): void {
 
   updateWorkspaceVisibility();
   renderWorkspaceList();
+  void restoreWebWorkspace();
   // ────────────────────────────────────────────────────────
 
   btnSettings.addEventListener("click", () => {
@@ -3259,8 +3383,7 @@ function mount(): void {
 
   renderPreviewTabs();
 
-  // Only set default if textarea is empty (browser may restore content on tab copy)
-  if (!source.value) {
+  if ((isNewWorkspaceSession && !clonedWorkspaceSessionId) || !source.value) {
     source.value = DEFAULT_MD;
   }
   
@@ -3843,8 +3966,8 @@ function mount(): void {
     btnReopenFile.disabled = !canReload;
   }
 
-  /** Electron 渲染进程会因开发期热重载、主进程重启或崩溃而整页重载，这里保留当前编辑会话。 */
-  const ELECTRON_SESSION_KEY = "md-viewer-electron-session";
+  /** Electron renderer 重载时保留当前应用实例的编辑会话。 */
+  const ELECTRON_SESSION_KEY = `md-viewer-electron-session:${workspaceSessionId}`;
   const ELECTRON_SESSION_MAX_CHARS = 2_000_000;
 
   interface ElectronSessionState {
@@ -4128,6 +4251,7 @@ function mount(): void {
     }
     const url = new URL(window.location.href);
     url.searchParams.delete("mdvOpen");
+    url.searchParams.delete(MDV_WORKSPACE_SESSION_PARAM);
     history.replaceState(null, "", url.pathname + url.search + url.hash);
     if (h) await applyFileHandleOpen(h);
   }
@@ -4143,6 +4267,7 @@ function mount(): void {
     }
     const url = new URL(window.location.href);
     url.searchParams.set("mdvOpen", id);
+    url.searchParams.set(MDV_WORKSPACE_SESSION_PARAM, crypto.randomUUID());
     const child = window.open(url.toString(), "_blank");
     if (!child) {
       const useHere = confirm(_t("popup_blocked"));

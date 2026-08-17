@@ -2718,6 +2718,34 @@ html[data-theme="dark"] .plantuml-block img {
 
   var MDV_TRANSFER_DB = "mdv-fs-transfer";
   var MDV_TRANSFER_STORE = "pending";
+  var MDV_WORKSPACE_STORE = "workspace";
+  var MDV_WORKSPACE_SESSION_PARAM = "mdvSession";
+  var MDV_WORKSPACE_SESSION_STORAGE_KEY = "md-viewer-workspace-session";
+  var isNewWorkspaceSession = false;
+  var clonedWorkspaceSessionId = null;
+
+  function createWorkspaceSessionId() {
+    return (crypto.randomUUID && crypto.randomUUID()) || (String(Date.now()) + Math.random());
+  }
+
+  function getWorkspaceSessionId() {
+    var querySessionId = new URLSearchParams(window.location.search).get(MDV_WORKSPACE_SESSION_PARAM);
+    if (querySessionId) {
+      isNewWorkspaceSession = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY) !== querySessionId;
+      sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, querySessionId);
+      return querySessionId;
+    }
+    var storedSessionId = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY);
+    var navigation = performance.getEntriesByType("navigation")[0];
+    if (storedSessionId && (!navigation || navigation.type !== "navigate")) return storedSessionId;
+    if (storedSessionId && navigation && navigation.type === "navigate") clonedWorkspaceSessionId = storedSessionId;
+    var sessionId = createWorkspaceSessionId();
+    isNewWorkspaceSession = true;
+    sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, sessionId);
+    return sessionId;
+  }
+
+  var workspaceSessionId = getWorkspaceSessionId();
 
   function posixDirname(p) {
     var n = p.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -2774,7 +2802,7 @@ html[data-theme="dark"] .plantuml-block img {
 
   function idbOpenTransferDb() {
     return new Promise(function(resolve, reject) {
-      var req = indexedDB.open(MDV_TRANSFER_DB, 1);
+      var req = indexedDB.open(MDV_TRANSFER_DB, 2);
       req.onerror = function() {
         reject(req.error || new Error("indexedDB.open failed"));
       };
@@ -2782,10 +2810,49 @@ html[data-theme="dark"] .plantuml-block img {
         if (!req.result.objectStoreNames.contains(MDV_TRANSFER_STORE)) {
           req.result.createObjectStore(MDV_TRANSFER_STORE);
         }
+        if (!req.result.objectStoreNames.contains(MDV_WORKSPACE_STORE)) {
+          req.result.createObjectStore(MDV_WORKSPACE_STORE);
+        }
       };
       req.onsuccess = function() {
         resolve(req.result);
       };
+    });
+  }
+
+  function idbPutWorkspace(state, sessionId) {
+    sessionId = sessionId || workspaceSessionId;
+    return idbOpenTransferDb().then(function(db) {
+      return new Promise(function(resolve, reject) {
+        var tx = db.transaction(MDV_WORKSPACE_STORE, "readwrite");
+        tx.objectStore(MDV_WORKSPACE_STORE).put(state, sessionId);
+        tx.oncomplete = function() {
+          db.close();
+          resolve();
+        };
+        tx.onerror = function() {
+          db.close();
+          reject(tx.error);
+        };
+      });
+    });
+  }
+
+  function idbGetWorkspace(sessionId) {
+    sessionId = sessionId || workspaceSessionId;
+    return idbOpenTransferDb().then(function(db) {
+      return new Promise(function(resolve, reject) {
+        var tx = db.transaction(MDV_WORKSPACE_STORE, "readonly");
+        var request = tx.objectStore(MDV_WORKSPACE_STORE).get(sessionId);
+        request.onsuccess = function() {
+          db.close();
+          resolve(request.result);
+        };
+        request.onerror = function() {
+          db.close();
+          reject(request.error);
+        };
+      });
     });
   }
 
@@ -3120,6 +3187,7 @@ html[data-theme="dark"] .plantuml-block img {
             await scanDirectoryChildren(node);
           }
           renderWorkspaceList();
+          await persistWorkspace();
         });
       }
 
@@ -3137,6 +3205,7 @@ html[data-theme="dark"] .plantuml-block img {
             await scanDirectoryChildren(node);
           }
           renderWorkspaceList();
+          await persistWorkspace();
         }
       });
 
@@ -3169,6 +3238,7 @@ html[data-theme="dark"] .plantuml-block img {
       }
       removeFrom(workspaceTree);
       renderWorkspaceList();
+      persistWorkspace();
     }
 
     function addFileNode(name, handle) {
@@ -3186,13 +3256,73 @@ html[data-theme="dark"] .plantuml-block img {
       var node = { name: name, kind: "file", handle: handle, children: [], expanded: false };
       workspaceTree.push(node);
       renderWorkspaceList();
+      persistWorkspace();
     }
 
     function addDirectoryNode(name, handle) {
       var node = { name: name, kind: "directory", handle: handle, children: [], expanded: false };
       workspaceTree.push(node);
       renderWorkspaceList();
+      persistWorkspace();
       return node;
+    }
+
+    async function persistWorkspace() {
+      try {
+        await idbPutWorkspace({
+          entries: workspaceTree.map(function(node) {
+            return {
+              name: node.name,
+              kind: node.kind,
+              handle: node.handle,
+              expanded: node.expanded
+            };
+          }),
+          rootHandle: workspaceRootHandle,
+          currentFileHandle: fileHandle,
+          currentFileName: currentFileName,
+          currentRelPath: currentRelPathInWorkspace,
+          savedContent: lastSavedContent,
+          content: source.value
+        });
+      } catch (e) {
+        console.warn("Could not persist workspace:", e);
+      }
+    }
+
+    async function restoreWorkspace() {
+      try {
+        var state = await idbGetWorkspace(clonedWorkspaceSessionId || workspaceSessionId);
+        if (!state || !state.entries || state.entries.length === 0) return;
+        if (clonedWorkspaceSessionId) await idbPutWorkspace(state);
+        workspaceRootHandle = state.rootHandle || null;
+        fileHandle = state.currentFileHandle || null;
+        currentFileName = state.currentFileName || currentFileName;
+        currentRelPathInWorkspace = state.currentRelPath || null;
+        if (typeof state.savedContent === "string") lastSavedContent = state.savedContent;
+        if (typeof state.content === "string") source.value = state.content;
+        workspaceTree = state.entries.map(function(entry) {
+          return {
+            name: entry.name,
+            kind: entry.kind,
+            handle: entry.handle,
+            children: [],
+            expanded: entry.expanded
+          };
+        });
+        renderWorkspaceList();
+        for (var i = 0; i < workspaceTree.length; i++) {
+          var node = workspaceTree[i];
+          if (node.kind === "directory" && node.expanded) {
+            await scanDirectoryChildren(node);
+          }
+        }
+        renderWorkspaceList();
+        await refreshWorkspacePath();
+        updateReopenButton();
+      } catch (e) {
+        console.warn("Could not restore workspace:", e);
+      }
     }
 
     function findNodeByHandle(nodes, handle) {
@@ -3287,8 +3417,7 @@ html[data-theme="dark"] .plantuml-block img {
       }
     }
 
-    // Only set default if textarea is empty (browser may restore content on tab copy)
-    if (!source.value) {
+    if ((isNewWorkspaceSession && !clonedWorkspaceSessionId) || !source.value) {
       source.value = DEFAULT_MD;
     }
     updateFilenameDisplay();
@@ -3846,6 +3975,7 @@ html[data-theme="dark"] .plantuml-block img {
       }
       var url = new URL(window.location.href);
       url.searchParams.delete("mdvOpen");
+      url.searchParams.delete(MDV_WORKSPACE_SESSION_PARAM);
       history.replaceState(null, "", url.pathname + url.search + url.hash);
       if (h) await applyFileHandleOpen(h);
     }
@@ -3861,6 +3991,7 @@ html[data-theme="dark"] .plantuml-block img {
       }
       var url = new URL(window.location.href);
       url.searchParams.set("mdvOpen", id);
+      url.searchParams.set(MDV_WORKSPACE_SESSION_PARAM, createWorkspaceSessionId());
       var child = window.open(url.toString(), "_blank");
       if (!child) {
         var useHere = confirm(t("popup_blocked"));
@@ -4204,6 +4335,7 @@ html[data-theme="dark"] .plantuml-block img {
       var node = addDirectoryNode(dir.name, dir);
       node.expanded = true;
       await scanDirectoryChildren(node);
+      await persistWorkspace();
     }
 
     // ── Open menu (file / directory dropdown) ──
@@ -4262,6 +4394,7 @@ html[data-theme="dark"] .plantuml-block img {
 
     // Update workspace visibility on init
     updateWorkspaceVisibility();
+    restoreWorkspace();
 
     var fileDragDepth = 0;
     document.addEventListener("dragenter", function(e) {

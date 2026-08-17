@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,6 +10,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  const sessionId = randomUUID();
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -53,9 +55,13 @@ function createWindow() {
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    const url = new URL(process.env.VITE_DEV_SERVER_URL);
+    url.searchParams.set('mdvSession', sessionId);
+    mainWindow.loadURL(url.toString());
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
+      query: { mdvSession: sessionId },
+    });
   }
 }
 

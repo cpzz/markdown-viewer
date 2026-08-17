@@ -10,6 +10,7 @@ namespace MarkdownViewer;
 public sealed partial class MainWindow : Window
 {
     private readonly bool _devMode;
+    private readonly string _sessionId = Guid.NewGuid().ToString("N");
 
     public MainWindow(string[] args)
     {
@@ -53,7 +54,7 @@ public sealed partial class MainWindow : Window
             if (_devMode)
             {
                 WebView.CoreWebView2.Settings.AreDevToolsEnabled = true;
-                WebView.CoreWebView2.Navigate("http://localhost:5173/?webview2=1");
+                WebView.CoreWebView2.Navigate($"http://localhost:5173/?webview2=1&mdvSession={_sessionId}");
                 return;
             }
 
@@ -70,7 +71,7 @@ public sealed partial class MainWindow : Window
                 distPath,
                 CoreWebView2HostResourceAccessKind.Allow);
 
-            WebView.CoreWebView2.Navigate("https://local.markdownviewer/index.html?webview2=1");
+            WebView.CoreWebView2.Navigate($"https://local.markdownviewer/index.html?webview2=1&mdvSession={_sessionId}");
         }
         catch (Exception ex)
         {
