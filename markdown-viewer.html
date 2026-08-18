@@ -2737,7 +2737,7 @@ html[data-theme="dark"] .plantuml-block img {
     }
     var storedSessionId = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY);
     var navigation = performance.getEntriesByType("navigation")[0];
-    if (storedSessionId && (!navigation || navigation.type !== "navigate")) return storedSessionId;
+    if (storedSessionId && (!navigation || (navigation.type !== "navigate" && navigation.type !== "reload"))) return storedSessionId;
     if (storedSessionId && navigation && navigation.type === "navigate") clonedWorkspaceSessionId = storedSessionId;
     var sessionId = createWorkspaceSessionId();
     isNewWorkspaceSession = true;

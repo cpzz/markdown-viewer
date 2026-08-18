@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
+const rendererSessions = new Map<number, unknown>();
 
 function createWindow() {
   const sessionId = randomUUID();
@@ -23,6 +24,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  const webContentsId = mainWindow.webContents.id;
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     console.error('[electron-lifecycle] render-process-gone', {
@@ -52,6 +54,10 @@ function createWindow() {
     console.error('[electron-lifecycle] window-unresponsive', {
       at: new Date().toISOString(),
     });
+  });
+
+  mainWindow.webContents.once('destroyed', () => {
+    rendererSessions.delete(webContentsId);
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -117,6 +123,12 @@ ipcMain.handle('file:read', async (_event, filePath: string) => {
 // IPC: 写入文件
 ipcMain.handle('file:write', async (_event, filePath: string, content: string) => {
   fs.writeFileSync(filePath, content, 'utf-8');
+});
+
+ipcMain.handle('session:get', event => rendererSessions.get(event.sender.id) ?? null);
+
+ipcMain.on('session:set', (event, state: unknown) => {
+  rendererSessions.set(event.sender.id, state);
 });
 
 // IPC: 消息对话框

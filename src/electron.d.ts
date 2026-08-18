@@ -9,6 +9,8 @@ interface ElectronAPI {
   saveFile: (content: string) => Promise<{ filePath: string | null }>;
   readFile: (filePath: string) => Promise<string>;
   writeFile: (filePath: string, content: string) => Promise<void>;
+  getSession: () => Promise<unknown>;
+  setSession: (state: unknown) => void;
   showMessageBox: (options: {
     type: string;
     title: string;

@@ -1311,7 +1311,7 @@ function getWorkspaceSessionId(): string {
   }
   const storedSessionId = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY);
   const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-  if (storedSessionId && navigation?.type !== "navigate") return storedSessionId;
+  if (storedSessionId && navigation?.type !== "navigate" && navigation?.type !== "reload") return storedSessionId;
   if (storedSessionId && navigation?.type === "navigate") clonedWorkspaceSessionId = storedSessionId;
   const sessionId = crypto.randomUUID();
   isNewWorkspaceSession = true;
@@ -1321,19 +1321,43 @@ function getWorkspaceSessionId(): string {
 
 const workspaceSessionId = getWorkspaceSessionId();
 
+interface ElectronWorkspaceHandle {
+  kind: "file" | "directory";
+  name: string;
+  path: string;
+}
+
+type WorkspaceHandle = FileSystemHandle | ElectronWorkspaceHandle;
+
 interface PersistedWorkspaceState {
-  entries: Array<{
-    name: string;
-    kind: "file" | "directory";
-    handle: FileSystemHandle;
-    expanded: boolean;
-  }>;
+  entries: PersistedWorkspaceEntry[];
   rootHandle: FileSystemDirectoryHandle | null;
   currentFileHandle: FileSystemFileHandle | null;
   currentFileName: string;
   currentRelPath: string | null;
   savedContent: string;
   content: string;
+}
+
+interface PersistedWorkspaceEntry {
+  name: string;
+  kind: "file" | "directory";
+  handle: WorkspaceHandle;
+  expanded: boolean;
+  children?: PersistedWorkspaceEntry[];
+}
+
+function isElectronWorkspaceHandle(handle: WorkspaceHandle): handle is ElectronWorkspaceHandle {
+  return "path" in handle;
+}
+
+function inferElectronRootPath(rootName: string, filePath: string | null): string | null {
+  if (!filePath) return null;
+  const normalized = filePath.replaceAll("\\", "/");
+  const segments = normalized.split("/");
+  const rootIndex = segments.lastIndexOf(rootName);
+  if (rootIndex === -1) return null;
+  return segments.slice(0, rootIndex + 1).join("/");
 }
 
 function posixDirname(p: string): string {
@@ -2487,7 +2511,7 @@ function mount(): void {
   interface WorkspaceTreeNode {
     name: string;
     kind: "file" | "directory";
-    handle: FileSystemHandle;
+    handle: WorkspaceHandle;
     children: WorkspaceTreeNode[];
     expanded: boolean;
   }
@@ -2495,6 +2519,7 @@ function mount(): void {
   let workspaceTree: WorkspaceTreeNode[] = [];
   let workspaceVisible = true;
   let workspaceWidth = "";
+  let workspaceRestoreComplete = false;
 
   function naturalCompare(a: string, b: string): number {
     const ax: (string | number)[] = [];
@@ -2552,7 +2577,8 @@ function mount(): void {
   function renderTreeNode(node: WorkspaceTreeNode, depth: number): void {
     const item = document.createElement("div");
     item.className = "workspace-item";
-    if (node.kind === "file" && fileHandle && node.handle === fileHandle) {
+    if (node.kind === "file" && ((fileHandle && node.handle === fileHandle)
+      || (isElectronWorkspaceHandle(node.handle) && node.handle.path === electronFilePath))) {
       item.classList.add("active");
     }
     if (depth > 0) {
@@ -2601,8 +2627,11 @@ function mount(): void {
       if ((e.target as HTMLElement).closest(".workspace-item-refresh")) return;
       if ((e.target as HTMLElement).closest(".workspace-expand-icon")) return;
       if (node.kind === "file") {
-        const fh = node.handle as FileSystemFileHandle;
-        await applyFileHandleOpen(fh);
+        if (isElectronWorkspaceHandle(node.handle)) {
+          await applyElectronPathOpen(node.handle.path);
+        } else {
+          await applyFileHandleOpen(node.handle as FileSystemFileHandle);
+        }
         renderWorkspaceList();
       } else if (node.kind === "directory") {
         await expandDirectoryNode();
@@ -2618,8 +2647,10 @@ function mount(): void {
       refreshEl.addEventListener("click", async (e) => {
         e.stopPropagation();
         e.preventDefault();
-        await scanDirectoryChildren(node);
+        node.expanded = true;
+        await refreshExpandedDirectoryTree(node);
         renderWorkspaceList();
+        await persistWebWorkspace();
       });
     }
 
@@ -2647,14 +2678,14 @@ function mount(): void {
     void persistWebWorkspace();
   }
 
-  function addFileNode(name: string, handle: FileSystemFileHandle): void {
+  function addFileNode(name: string, handle: FileSystemFileHandle | ElectronWorkspaceHandle): void {
     if (findNodeByHandle(workspaceTree, handle)) return;
     workspaceTree.push({ name, kind: "file", handle, children: [], expanded: false });
     renderWorkspaceList();
     void persistWebWorkspace();
   }
 
-  function addDirectoryNode(name: string, handle: FileSystemDirectoryHandle): WorkspaceTreeNode {
+  function addDirectoryNode(name: string, handle: FileSystemDirectoryHandle | ElectronWorkspaceHandle): WorkspaceTreeNode {
     const existing = findNodeByHandle(workspaceTree, handle);
     if (existing) return existing;
     const node: WorkspaceTreeNode = { name, kind: "directory", handle, children: [], expanded: false };
@@ -2664,20 +2695,43 @@ function mount(): void {
     return node;
   }
 
-  async function persistWebWorkspace(): Promise<void> {
+  let workspacePersistQueue: Promise<void> = Promise.resolve();
+
+  function persistWebWorkspace(): Promise<void> {
+    if (!workspaceRestoreComplete) return Promise.resolve();
+    let state: PersistedWorkspaceState;
     try {
-      await idbPutWorkspace({
-        entries: workspaceTree.map(({ name, kind, handle, expanded }) => ({ name, kind, handle, expanded })),
+      const serializeNode = (node: WorkspaceTreeNode): PersistedWorkspaceEntry => ({
+        name: node.name,
+        kind: node.kind,
+        handle: node.handle,
+        expanded: node.expanded,
+        children: isElectron ? node.children.map(serializeNode) : undefined,
+      });
+      state = {
+        entries: workspaceTree.map(serializeNode),
         rootHandle: workspaceRootHandle,
         currentFileHandle: fileHandle,
         currentFileName,
         currentRelPath: currentRelPathInWorkspace,
         savedContent: lastSavedContent,
         content: source.value,
-      });
+      };
     } catch (e) {
       console.warn("Could not persist workspace:", e);
+      return Promise.resolve();
     }
+
+    workspacePersistQueue = workspacePersistQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await idbPutWorkspace(state);
+        } catch (e) {
+          console.warn("Could not persist workspace:", e);
+        }
+      });
+    return workspacePersistQueue;
   }
 
   async function restoreWebWorkspace(): Promise<void> {
@@ -2685,36 +2739,48 @@ function mount(): void {
       const state = await idbGetWorkspace(clonedWorkspaceSessionId ?? workspaceSessionId);
       if (!state?.entries.length) return;
       if (clonedWorkspaceSessionId) await idbPutWorkspace(state);
-      workspaceRootHandle = state.rootHandle ?? null;
-      fileHandle = state.currentFileHandle ?? null;
-      currentFileName = state.currentFileName || currentFileName;
-      currentRelPathInWorkspace = state.currentRelPath ?? null;
-      if (typeof state.savedContent === "string") lastSavedContent = state.savedContent;
-      if (typeof state.content === "string") source.value = state.content;
-      workspaceTree = state.entries.map(({ name, kind, handle, expanded }) => ({
+      if (!isElectron) {
+        workspaceRootHandle = state.rootHandle ?? null;
+        fileHandle = state.currentFileHandle ?? null;
+        currentFileName = state.currentFileName || currentFileName;
+        currentRelPathInWorkspace = state.currentRelPath ?? null;
+        if (typeof state.savedContent === "string") lastSavedContent = state.savedContent;
+        if (typeof state.content === "string") source.value = state.content;
+      }
+      const restoreNode = ({ name, kind, handle, expanded, children }: PersistedWorkspaceEntry): WorkspaceTreeNode => ({
         name,
         kind,
-        handle,
-        children: [],
+        handle: isElectron && kind === "directory" && !isElectronWorkspaceHandle(handle)
+          ? { kind, name, path: inferElectronRootPath(name, electronFilePath) ?? "" }
+          : handle,
+        children: isElectron ? (children?.map(restoreNode) ?? []) : [],
         expanded,
-      }));
+      });
+      workspaceTree = state.entries.map(restoreNode)
+        .filter((node) => !isElectron || !isElectronWorkspaceHandle(node.handle) || node.handle.path !== "");
       renderWorkspaceList();
       for (const node of workspaceTree) {
         if (node.kind === "directory" && node.expanded) {
           await scanDirectoryChildren(node);
         }
       }
+      if (isElectron) await expandElectronPathToActiveFile();
       renderWorkspaceList();
       await refreshWorkspacePath();
       updateToolbarButtons();
     } catch (e) {
       console.warn("Could not restore workspace:", e);
+    } finally {
+      workspaceRestoreComplete = true;
+      if (isElectron && workspaceTree.length > 0) await persistWebWorkspace();
     }
   }
 
-  function findNodeByHandle(nodes: WorkspaceTreeNode[], handle: FileSystemHandle): WorkspaceTreeNode | null {
+  function findNodeByHandle(nodes: WorkspaceTreeNode[], handle: WorkspaceHandle): WorkspaceTreeNode | null {
     for (const node of nodes) {
       if (node.handle === handle) return node;
+      if (isElectronWorkspaceHandle(node.handle) && isElectronWorkspaceHandle(handle)
+        && node.handle.path === handle.path) return node;
       if (node.kind === "directory") {
         const found = findNodeByHandle(node.children, handle);
         if (found) return found;
@@ -2724,6 +2790,25 @@ function mount(): void {
   }
 
   async function scanDirectoryChildren(parentNode: WorkspaceTreeNode): Promise<void> {
+    if (isElectronWorkspaceHandle(parentNode.handle)) {
+      if (!window.electronAPI) return;
+      try {
+        const entries = await window.electronAPI.readDirectory(parentNode.handle.path);
+        const previousChildren = new Map(parentNode.children
+          .filter((child) => isElectronWorkspaceHandle(child.handle))
+          .map((child) => [(child.handle as ElectronWorkspaceHandle).path, child]));
+        parentNode.children = entries.map((entry) => ({
+          name: entry.name,
+          kind: entry.type,
+          handle: { kind: entry.type, name: entry.name, path: entry.path },
+          children: previousChildren.get(entry.path)?.children ?? [],
+          expanded: previousChildren.get(entry.path)?.expanded ?? false,
+        }));
+      } catch (e) {
+        console.error("Error scanning Electron directory:", e);
+      }
+      return;
+    }
     const dir = parentNode.handle as FileSystemDirectoryHandle;
     try {
       const dirAny = dir as any;
@@ -2744,7 +2829,50 @@ function mount(): void {
     }
   }
 
+  async function refreshExpandedDirectoryTree(node: WorkspaceTreeNode): Promise<void> {
+    await scanDirectoryChildren(node);
+    for (const child of node.children) {
+      if (child.kind === "directory" && child.expanded) {
+        await refreshExpandedDirectoryTree(child);
+      }
+    }
+  }
+
+  async function expandElectronPathToActiveFile(): Promise<void> {
+    if (!electronFilePath) return;
+    const activePath = electronFilePath.replaceAll("\\", "/");
+    for (const root of workspaceTree) {
+      if (root.kind !== "directory" || !isElectronWorkspaceHandle(root.handle)) continue;
+      const rootPath = root.handle.path.replaceAll("\\", "/").replace(/\/+$/, "");
+      if (activePath !== rootPath && !activePath.startsWith(`${rootPath}/`)) continue;
+      let current = root;
+      current.expanded = true;
+      await scanDirectoryChildren(current);
+      while (true) {
+        const next = current.children.find((child) => child.kind === "directory"
+          && isElectronWorkspaceHandle(child.handle)
+          && activePath.startsWith(`${child.handle.path.replaceAll("\\", "/").replace(/\/+$/, "")}/`));
+        if (!next) break;
+        next.expanded = true;
+        await scanDirectoryChildren(next);
+        current = next;
+      }
+    }
+  }
+
   async function addDirectoryToWorkspace(dirHandle?: FileSystemDirectoryHandle): Promise<void> {
+    if (isElectron && window.electronAPI) {
+      const result = await window.electronAPI.openDirectory();
+      for (const dirPath of result.filePaths) {
+        const name = dirPath.split(/[\\/]/).pop() || dirPath;
+        const node = addDirectoryNode(name, { kind: "directory", name, path: dirPath });
+        node.expanded = true;
+        await scanDirectoryChildren(node);
+      }
+      renderWorkspaceList();
+      await persistWebWorkspace();
+      return;
+    }
     let dir: FileSystemDirectoryHandle;
     if (dirHandle) {
       dir = dirHandle;
@@ -2825,7 +2953,6 @@ function mount(): void {
 
   updateWorkspaceVisibility();
   renderWorkspaceList();
-  void restoreWebWorkspace();
   // ────────────────────────────────────────────────────────
 
   btnSettings.addEventListener("click", () => {
@@ -3675,8 +3802,10 @@ function mount(): void {
       };
       try {
         const fig = renderPlantUmlBlock(docSource, plantumlOutputFormat);
+        if (renderSeq !== documentRenderSeq) return;
         preview.innerHTML = DOMPurify.sanitize(`<article class="preview-plantuml-file">${fig}</article>`, sanitizeOpts);
       } catch (e) {
+        if (renderSeq !== documentRenderSeq) return;
         const msg = e instanceof Error ? e.message : String(e);
         preview.innerHTML = DOMPurify.sanitize(
           `<article class="preview-plantuml-file"><p class="plantuml-error">${_t("plantuml_error")}: ${escapeHtml(msg)}</p></article>`,
@@ -3696,6 +3825,7 @@ function mount(): void {
       if (lang && isMinifiedCode(displayContent)) {
         // Use chunk-based highlighting for minified code to avoid Prism backtracking
         const highlighted = highlightMinifiedCode(displayContent, lang);
+        if (renderSeq !== documentRenderSeq) return;
         preview.innerHTML = DOMPurify.sanitize(
           `<article class="preview-non-markdown">${codeBlockWithCopyButton(langClass, highlighted)}</article>`,
           {
@@ -3733,6 +3863,7 @@ function mount(): void {
         );
       } else {
         const escaped = escapeHtml(displayContent);
+        if (renderSeq !== documentRenderSeq) return;
         preview.innerHTML = DOMPurify.sanitize(
           `<article class="preview-non-markdown">${codeBlockWithCopyButton(langClass, escaped)}</article>`,
           {
@@ -3918,17 +4049,29 @@ function mount(): void {
   }
 
   let t: ReturnType<typeof setTimeout> | undefined;
+  let observedSourceValue = source.value;
+  let initialRestoreComplete = !isElectron;
   function scheduleRender(): void {
+    if (!initialRestoreComplete) return;
+    observedSourceValue = source.value;
     if (t) clearTimeout(t);
     t = setTimeout(() => {
       void render();
       updateToolbarButtons();
       saveElectronSession();
+      void persistWebWorkspace();
     }, 120);
   }
 
   source.addEventListener("input", scheduleRender);
   source.addEventListener("change", scheduleRender);
+  window.addEventListener("pageshow", scheduleRender);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") scheduleRender();
+  });
+  window.setInterval(() => {
+    if (source.value !== observedSourceValue) scheduleRender();
+  }, 1000);
 
   // Initial render (handles tab copy where browser restores textarea but not preview)
   scheduleRender();
@@ -3984,6 +4127,7 @@ function mount(): void {
     try {
       if (!electronFilePath && !isContentModified()) {
         localStorage.removeItem(ELECTRON_SESSION_KEY);
+        window.electronAPI?.setSession(null);
         return;
       }
       if (source.value.length > ELECTRON_SESSION_MAX_CHARS) return;
@@ -3996,22 +4140,33 @@ function mount(): void {
         scrollTop: source.scrollTop,
       };
       localStorage.setItem(ELECTRON_SESSION_KEY, JSON.stringify(state));
+      window.electronAPI?.setSession(state);
     } catch (e) {
       console.warn("Could not persist Electron session:", e);
     }
   }
 
-  function restoreElectronSession(): void {
+  async function restoreElectronSession(): Promise<void> {
     if (!isElectron) return;
-    let raw: string | null = null;
+    let state: Partial<ElectronSessionState> | null = null;
     try {
-      raw = localStorage.getItem(ELECTRON_SESSION_KEY);
+      const mainProcessState = await window.electronAPI?.getSession();
+      if (mainProcessState && typeof mainProcessState === "object") {
+        state = mainProcessState as Partial<ElectronSessionState>;
+      }
     } catch (e) {
-      console.warn("Could not read Electron session:", e);
+      console.warn("Could not read Electron main-process session:", e);
     }
-    if (!raw) return;
+    if (!state) {
+      try {
+        const raw = localStorage.getItem(ELECTRON_SESSION_KEY);
+        if (raw) state = JSON.parse(raw) as Partial<ElectronSessionState>;
+      } catch (e) {
+        console.warn("Could not read Electron local session:", e);
+      }
+    }
+    if (!state) return;
     try {
-      const state = JSON.parse(raw) as Partial<ElectronSessionState>;
       if (typeof state.content !== "string") return;
       electronFilePath = state.filePath ?? null;
       currentFileName = state.fileName || currentFileName;
@@ -4021,14 +4176,18 @@ function mount(): void {
       if (electronFilePath) markFileOpened();
       source.scrollTop = state.scrollTop ?? 0;
       activateDefaultPreviewTab();
-      scheduleRender();
       updateToolbarButtons();
     } catch (e) {
       console.warn("Could not restore Electron session:", e);
     }
   }
 
-  restoreElectronSession();
+  void (async () => {
+    await restoreElectronSession();
+    await restoreWebWorkspace();
+    initialRestoreComplete = true;
+    scheduleRender();
+  })();
   window.addEventListener("beforeunload", saveElectronSession);
 
   async function refreshWorkspacePath(): Promise<void> {
@@ -4146,6 +4305,21 @@ function mount(): void {
     addFileNode(h.name, h);
     activateDefaultPreviewTab();
     scheduleRender();
+  }
+
+  async function applyElectronPathOpen(filePath: string): Promise<void> {
+    if (!window.electronAPI) return;
+    const content = await window.electronAPI.readFile(filePath);
+    electronFilePath = filePath;
+    currentFileName = filePath.split(/[\\/]/).pop() || "document.md";
+    source.value = content;
+    lastSavedContent = content;
+    markFileOpened();
+    addFileNode(currentFileName, { kind: "file", name: currentFileName, path: filePath });
+    activateDefaultPreviewTab();
+    scheduleRender();
+    updateToolbarButtons();
+    saveElectronSession();
   }
 
   async function findWorkspaceFileByHandle(targetHandle: FileSystemFileHandle): Promise<FileSystemFileHandle | null> {
@@ -4384,16 +4558,7 @@ function mount(): void {
       try {
         const result = await window.electronAPI.openFile();
         if (!result.filePath) return;
-        
-        const content = await window.electronAPI.readFile(result.filePath);
-        electronFilePath = result.filePath;
-        currentFileName = result.filePath.split('\\').pop()?.split('/').pop() || 'document.md';
-        source.value = content;
-        lastSavedContent = content;
-        markFileOpened();
-        activateDefaultPreviewTab();
-        scheduleRender();
-        updateToolbarButtons();
+        await applyElectronPathOpen(result.filePath);
       } catch (e) {
         console.error('Failed to open file in Electron:', e);
       }

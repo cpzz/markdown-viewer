@@ -3,6 +3,9 @@ import electron from 'vite-plugin-electron';
 import renderer from 'vite-plugin-electron-renderer';
 
 export default defineConfig({
+  server: {
+    hmr: false,
+  },
   plugins: [
     electron([
       {
@@ -16,7 +19,7 @@ export default defineConfig({
       {
         entry: 'electron/preload.ts',
         onstart(args) {
-          args.reload();
+          return args.startup();
         },
         vite: {
           build: {
