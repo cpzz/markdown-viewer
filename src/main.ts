@@ -2396,7 +2396,9 @@ function mount(): void {
             </div>
           </div>
         </div>
-        <label for="source" data-i18n="markdown_source">Markdown source</label>
+        <div class="source-file-header">
+          <label id="source-file-label" for="source" class="source-file-label" data-i18n="markdown_source" title="Markdown source">Markdown source</label>
+        </div>
         <textarea id="source" spellcheck="false" data-i18n="markdown_source" data-i18n-attr="aria-label"></textarea>
       </section>
       <div class="resizer" id="resizer"></div>
@@ -2469,6 +2471,7 @@ function mount(): void {
   `;
 
   const source = document.querySelector<HTMLTextAreaElement>("#source")!;
+  const sourceFileLabel = document.querySelector<HTMLLabelElement>("#source-file-label")!;
   const preview = document.querySelector<HTMLElement>("#preview")!;
   const previewWrap = document.querySelector<HTMLElement>("#preview-wrap")!;
   const formatSelect = document.querySelector<HTMLSelectElement>("#uml-format")!;
@@ -2562,24 +2565,57 @@ function mount(): void {
     btnWorkspace.title = workspaceVisible ? _t("hide_workspace") : _t("show_workspace");
   }
 
+  function isActiveWorkspaceFile(node: WorkspaceTreeNode): boolean {
+    if (node.kind !== "file") return false;
+    if (fileHandle && node.handle === fileHandle) return true;
+    if (isElectronWorkspaceHandle(node.handle) && electronFilePath) {
+      return node.handle.path.replaceAll("\\", "/") === electronFilePath.replaceAll("\\", "/");
+    }
+    return false;
+  }
+
+  function resolveActiveWorkspaceNode(nodes: WorkspaceTreeNode[], parent: WorkspaceTreeNode | null = null): { fileNode: WorkspaceTreeNode | null; ancestorNodes: Set<WorkspaceTreeNode> } {
+    const ancestorNodes = new Set<WorkspaceTreeNode>();
+    if (parent) ancestorNodes.add(parent);
+
+    for (const node of nodes) {
+      if (node.kind === "file" && isActiveWorkspaceFile(node)) {
+        return { fileNode: node, ancestorNodes: new Set(ancestorNodes) };
+      }
+      if (node.kind === "directory") {
+        const childMatch = resolveActiveWorkspaceNode(node.children, node);
+        if (childMatch.fileNode) {
+          childMatch.ancestorNodes.add(node);
+          return childMatch;
+        }
+      }
+    }
+
+    return { fileNode: null, ancestorNodes: new Set() };
+  }
+
   function renderWorkspaceList(): void {
     if (workspaceTree.length === 0) {
       workspaceList.innerHTML = `<div class="workspace-empty" data-i18n="workspace_empty">${_t("workspace_empty")}</div>`;
       return;
     }
     sortNodes(workspaceTree);
+    const activeContext = resolveActiveWorkspaceNode(workspaceTree);
     workspaceList.innerHTML = "";
     for (const node of workspaceTree) {
-      renderTreeNode(node, 0);
+      renderTreeNode(node, 0, activeContext);
     }
   }
 
-  function renderTreeNode(node: WorkspaceTreeNode, depth: number): void {
+  function renderTreeNode(node: WorkspaceTreeNode, depth: number, activeContext: { fileNode: WorkspaceTreeNode | null; ancestorNodes: Set<WorkspaceTreeNode> }): void {
     const item = document.createElement("div");
     item.className = "workspace-item";
-    if (node.kind === "file" && ((fileHandle && node.handle === fileHandle)
-      || (isElectronWorkspaceHandle(node.handle) && node.handle.path === electronFilePath))) {
+    const isActiveFile = node.kind === "file" && activeContext.fileNode === node;
+    const isActiveAncestor = !isActiveFile && activeContext.ancestorNodes.has(node);
+    if (isActiveFile) {
       item.classList.add("active");
+    } else if (isActiveAncestor) {
+      item.classList.add("active-ancestor");
     }
     if (depth > 0) {
       item.style.paddingLeft = `${0.75 + depth * 1}rem`;
@@ -2659,7 +2695,7 @@ function mount(): void {
     // Render children if expanded
     if (node.kind === "directory" && node.expanded) {
       for (const child of node.children) {
-        renderTreeNode(child, depth + 1);
+        renderTreeNode(child, depth + 1, activeContext);
       }
     }
   }
@@ -4051,9 +4087,29 @@ function mount(): void {
   let t: ReturnType<typeof setTimeout> | undefined;
   let observedSourceValue = source.value;
   let initialRestoreComplete = !isElectron;
+  function getDisplayFilePath(): string {
+    if (isElectron && electronFilePath) return electronFilePath;
+    if (currentRelPathInWorkspace) {
+      const rootName = workspaceRootHandle?.name;
+      if (rootName && !currentRelPathInWorkspace.startsWith(`${rootName}/`) && currentRelPathInWorkspace !== rootName) {
+        return `${rootName}/${currentRelPathInWorkspace}`;
+      }
+      return currentRelPathInWorkspace;
+    }
+    return currentFileName;
+  }
+
+  function updateSourceFileLabel(): void {
+    const targetPath = getDisplayFilePath();
+    sourceFileLabel.textContent = targetPath;
+    sourceFileLabel.title = targetPath;
+    sourceFileLabel.setAttribute("aria-label", targetPath);
+  }
+
   function scheduleRender(): void {
     if (!initialRestoreComplete) return;
     observedSourceValue = source.value;
+    updateSourceFileLabel();
     if (t) clearTimeout(t);
     t = setTimeout(() => {
       void render();

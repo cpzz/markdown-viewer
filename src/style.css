@@ -331,9 +331,14 @@ header h1 {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
-.workspace-item.active {
+.workspace-item.active,
+.workspace-item.active-ancestor {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
+}
+
+.workspace-item.active-ancestor {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .workspace-item-icon {
@@ -367,8 +372,17 @@ header h1 {
   transform: rotate(0deg);
 }
 
-.workspace-item.active .workspace-item-icon {
+.workspace-item.active .workspace-item-icon,
+.workspace-item.active-ancestor .workspace-item-icon {
   color: var(--accent);
+}
+
+.workspace-item-name {
+  font-weight: inherit;
+}
+
+.workspace-item.active-ancestor .workspace-item-name {
+  font-weight: 600;
 }
 
 .workspace-item-name {
@@ -514,6 +528,25 @@ main.single-panel .resizer { display: none; }
   letter-spacing: 0.06em;
   color: var(--fg-muted);
   font-weight: 600;
+}
+
+.source-file-header {
+  padding: 0.5rem 1rem 0;
+}
+
+.source-file-label {
+  display: block;
+  width: 100%;
+  padding: 0.25rem 0 0.625rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Source editor */
