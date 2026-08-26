@@ -48,8 +48,9 @@ const I18N: Record<Locale, Record<string, string>> = {
     replace_escape: "Replace escape sequences (\\n, \\t, etc.)",
     no_matches: "No matches",
     markdown_source: "Markdown source",
+    source_file: "Source file",
     preview_label: "Preview",
-    default_preview_tab: "PREVIEW",
+    default_preview_tab: "Preview",
     settings_title: "Settings",
     close_settings: "Close settings",
     fit_width: "Fit to Width",
@@ -131,8 +132,9 @@ const I18N: Record<Locale, Record<string, string>> = {
     replace_escape: "\u8f6c\u4e49\u5e8f\u5217\u66ff\u6362 (\\n, \\t \u7b49)",
     no_matches: "\u65e0\u5339\u914d",
     markdown_source: "Markdown \u6e90\u7801",
+    source_file: "\u6e90\u6587\u4ef6",
     preview_label: "\u9884\u89c8",
-    default_preview_tab: "PREVIEW",
+    default_preview_tab: "\u9884\u89c8",
     settings_title: "\u8bbe\u7f6e",
     close_settings: "\u5173\u95ed\u8bbe\u7f6e",
     fit_width: "\u9002\u5e94\u5bbd\u5ea6",
@@ -266,7 +268,9 @@ let mermaidQueue: Array<{ id: string; source: string }> = [];
 let mermaidRenderSeq = 0;
 
 function normalizePlantUmlSource(text: string): string {
-  const t = text.trim();
+  let t = text.trim();
+  const fenced = t.match(/^[ \t]{0,3}`{3,}(?:plantuml|puml|\{uml\})[^\n]*\n([\s\S]*?)\n[ \t]{0,3}`{3,}[ \t]*$/i);
+  if (fenced) t = fenced[1].trim();
   if (t.includes("@startuml")) return t;
   return `@startuml\n${t}\n@enduml`;
 }
@@ -394,6 +398,14 @@ function isPlantUmlDocumentPath(pathOrName: string): boolean {
   return Boolean(ext) && PLANTUML_DOCUMENT_EXTENSIONS.has(ext);
 }
 
+/** Whole-file Mermaid source. */
+const MERMAID_DOCUMENT_EXTENSIONS = new Set(["mmd", "mermaid"]);
+
+function isMermaidDocumentPath(pathOrName: string): boolean {
+  const ext = pathFileExtension(pathOrName);
+  return Boolean(ext) && MERMAID_DOCUMENT_EXTENSIONS.has(ext);
+}
+
 /** XMind mind-map files (ZIP containing content.xml or content.json). */
 const XMIND_DOCUMENT_EXTENSIONS = new Set(["xmind"]);
 
@@ -426,6 +438,22 @@ function prettyPrintXml(xml: string): string {
 function isXmindDocumentPath(pathOrName: string): boolean {
   const ext = pathFileExtension(pathOrName);
   return Boolean(ext) && XMIND_DOCUMENT_EXTENSIONS.has(ext);
+}
+
+type DocumentFormat = "markdown" | "plantuml" | "mermaid" | "xmind" | "text";
+
+function documentFormatForPath(pathOrName: string): DocumentFormat {
+  if (isMarkdownDocumentPath(pathOrName)) return "markdown";
+  if (isPlantUmlDocumentPath(pathOrName)) return "plantuml";
+  if (isMermaidDocumentPath(pathOrName)) return "mermaid";
+  if (isXmindDocumentPath(pathOrName)) return "xmind";
+  return "text";
+}
+
+function normalizeMermaidSource(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^[ \t]{0,3}`{3,}mermaid[^\n]*\n([\s\S]*?)\n[ \t]{0,3}`{3,}[ \t]*$/i);
+  return (fenced?.[1] ?? trimmed).trim();
 }
 
 /** Parse an XMind file (ArrayBuffer); returns pretty source for display.
@@ -1321,6 +1349,13 @@ function getWorkspaceSessionId(): string {
 
 const workspaceSessionId = getWorkspaceSessionId();
 
+/**
+ * Electron runs a single window and `workspaceSessionId` is regenerated on every
+ * reload/relaunch (sessionStorage does not survive). Persist the workspace tree
+ * under a stable key so the directory tree survives reloads and app restarts.
+ */
+const workspacePersistId = isElectron ? "md-viewer-electron-workspace" : workspaceSessionId;
+
 interface ElectronWorkspaceHandle {
   kind: "file" | "directory";
   name: string;
@@ -1330,9 +1365,12 @@ interface ElectronWorkspaceHandle {
 type WorkspaceHandle = FileSystemHandle | ElectronWorkspaceHandle;
 
 interface PersistedWorkspaceState {
+  treeSnapshotVersion?: number;
   entries: PersistedWorkspaceEntry[];
   rootHandle: FileSystemDirectoryHandle | null;
   currentFileHandle: FileSystemFileHandle | null;
+  rootNodePath?: number[];
+  currentFileNodePath?: number[];
   currentFileName: string;
   currentRelPath: string | null;
   savedContent: string;
@@ -1431,7 +1469,7 @@ function idbOpenTransferDb(): Promise<IDBDatabase> {
   });
 }
 
-async function idbPutWorkspace(state: PersistedWorkspaceState, sessionId = workspaceSessionId): Promise<void> {
+async function idbPutWorkspace(state: PersistedWorkspaceState, sessionId = workspacePersistId): Promise<void> {
   const db = await idbOpenTransferDb();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -1445,7 +1483,7 @@ async function idbPutWorkspace(state: PersistedWorkspaceState, sessionId = works
   }
 }
 
-async function idbGetWorkspace(sessionId = workspaceSessionId): Promise<PersistedWorkspaceState | undefined> {
+async function idbGetWorkspace(sessionId = workspacePersistId): Promise<PersistedWorkspaceState | undefined> {
   const db = await idbOpenTransferDb();
   try {
     return await new Promise<PersistedWorkspaceState | undefined>((resolve, reject) => {
@@ -1538,6 +1576,8 @@ const SOURCE_EXT_TO_PRISM: Record<string, string> = {
   json: "json",
   yaml: "yaml",
   yml: "yaml",
+  ini: "ini",
+  cfg: "ini",
   toml: "toml",
   /** Automake `Makefile.am` and similar */
   am: "makefile",
@@ -1578,6 +1618,7 @@ const PRISM_LOADED_LANG = new Set([
   "css",
   "json",
   "yaml",
+  "ini",
   "java",
   "c",
   "cpp",
@@ -2397,7 +2438,7 @@ function mount(): void {
           </div>
         </div>
         <div class="source-file-header">
-          <label id="source-file-label" for="source" class="source-file-label" data-i18n="markdown_source" title="Markdown source">Markdown source</label>
+          <label id="source-file-label" for="source" class="source-file-label" title="Markdown source">Markdown source</label>
         </div>
         <textarea id="source" spellcheck="false" data-i18n="markdown_source" data-i18n-attr="aria-label"></textarea>
       </section>
@@ -2500,6 +2541,7 @@ function mount(): void {
   btnLang.addEventListener("click", () => {
     setLocale(currentLocale === "en" ? "zh" : "en");
     renderPreviewTabs();
+    updateSourceFileLabel();
   });
   applyI18n();
 
@@ -2520,6 +2562,7 @@ function mount(): void {
   }
 
   let workspaceTree: WorkspaceTreeNode[] = [];
+  const importedSnapshotDirectories = new WeakSet<WorkspaceTreeNode>();
   let workspaceVisible = true;
   let workspaceWidth = "";
   let workspaceRestoreComplete = false;
@@ -2641,7 +2684,7 @@ function mount(): void {
 
     const expandDirectoryNode = async (): Promise<void> => {
       node.expanded = !node.expanded;
-      if (node.expanded) {
+      if (node.expanded && (node.children.length === 0 || !importedSnapshotDirectories.has(node))) {
         await scanDirectoryChildren(node);
       }
       renderWorkspaceList();
@@ -2684,7 +2727,11 @@ function mount(): void {
         e.stopPropagation();
         e.preventDefault();
         node.expanded = true;
-        await refreshExpandedDirectoryTree(node);
+        if (isElectronWorkspaceHandle(node.handle)) {
+          await scanDirectoryChildren(node);
+        } else {
+          await refreshExpandedDirectoryTree(node);
+        }
         renderWorkspaceList();
         await persistWebWorkspace();
       });
@@ -2701,6 +2748,7 @@ function mount(): void {
   }
 
   function removeTreeNode(target: WorkspaceTreeNode): void {
+    const removesActiveFile = nodeContainsActiveFile(target);
     const removeFrom = (arr: WorkspaceTreeNode[]): boolean => {
       const idx = arr.indexOf(target);
       if (idx !== -1) { arr.splice(idx, 1); return true; }
@@ -2710,8 +2758,39 @@ function mount(): void {
       return false;
     };
     removeFrom(workspaceTree);
+    if (removesActiveFile) resetToDefaultDocument(target);
     renderWorkspaceList();
     void persistWebWorkspace();
+  }
+
+  function nodeContainsActiveFile(node: WorkspaceTreeNode): boolean {
+    if (isActiveWorkspaceFile(node)) return true;
+    if (node.kind !== "directory") return false;
+    if (isElectronWorkspaceHandle(node.handle) && electronFilePath) {
+      const directoryPath = node.handle.path.replaceAll("\\", "/").replace(/\/+$/, "");
+      const activePath = electronFilePath.replaceAll("\\", "/");
+      if (activePath.startsWith(`${directoryPath}/`)) return true;
+    }
+    return node.children.some(nodeContainsActiveFile);
+  }
+
+  function resetToDefaultDocument(removedNode: WorkspaceTreeNode): void {
+    if (removedNode.kind === "directory" && removedNode.handle === workspaceRootHandle) {
+      workspaceRootHandle = null;
+    }
+    currentFileName = "document.md";
+    electronFilePath = null;
+    fileHandle = null;
+    currentRelPathInWorkspace = null;
+    fileOpened = false;
+    xmindRenderContent = null;
+    linkedPreviewTabs = [];
+    source.value = DEFAULT_MD;
+    source.scrollTop = 0;
+    lastSavedContent = DEFAULT_MD;
+    activateDefaultPreviewTab();
+    updateToolbarButtons();
+    scheduleRender();
   }
 
   function addFileNode(name: string, handle: FileSystemFileHandle | ElectronWorkspaceHandle): void {
@@ -2733,6 +2812,30 @@ function mount(): void {
 
   let workspacePersistQueue: Promise<void> = Promise.resolve();
 
+  function findWorkspaceNodePathByHandle(nodes: WorkspaceTreeNode[], target: WorkspaceHandle): number[] | undefined {
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index];
+      if (node.handle === target) return [index];
+      if (node.kind === "directory") {
+        const childPath = findWorkspaceNodePathByHandle(node.children, target);
+        if (childPath) return [index, ...childPath];
+      }
+    }
+    return undefined;
+  }
+
+  function getWorkspaceNodeAtPath(path: number[] | undefined): WorkspaceTreeNode | null {
+    if (!path?.length) return null;
+    let nodes = workspaceTree;
+    let node: WorkspaceTreeNode | undefined;
+    for (const index of path) {
+      node = nodes[index];
+      if (!node) return null;
+      nodes = node.children;
+    }
+    return node ?? null;
+  }
+
   function persistWebWorkspace(): Promise<void> {
     if (!workspaceRestoreComplete) return Promise.resolve();
     let state: PersistedWorkspaceState;
@@ -2742,12 +2845,15 @@ function mount(): void {
         kind: node.kind,
         handle: node.handle,
         expanded: node.expanded,
-        children: isElectron ? node.children.map(serializeNode) : undefined,
+        children: node.children.map(serializeNode),
       });
       state = {
+        treeSnapshotVersion: 1,
         entries: workspaceTree.map(serializeNode),
         rootHandle: workspaceRootHandle,
         currentFileHandle: fileHandle,
+        rootNodePath: workspaceRootHandle ? findWorkspaceNodePathByHandle(workspaceTree, workspaceRootHandle) : undefined,
+        currentFileNodePath: fileHandle ? findWorkspaceNodePathByHandle(workspaceTree, fileHandle) : undefined,
         currentFileName,
         currentRelPath: currentRelPathInWorkspace,
         savedContent: lastSavedContent,
@@ -2772,9 +2878,9 @@ function mount(): void {
 
   async function restoreWebWorkspace(): Promise<void> {
     try {
-      const state = await idbGetWorkspace(clonedWorkspaceSessionId ?? workspaceSessionId);
-      if (!state?.entries.length) return;
-      if (clonedWorkspaceSessionId) await idbPutWorkspace(state);
+      const state = await idbGetWorkspace(isElectron ? workspacePersistId : (clonedWorkspaceSessionId ?? workspaceSessionId));
+      if (!state || !Array.isArray(state.entries)) return;
+      if (clonedWorkspaceSessionId && !isElectron) await idbPutWorkspace(state);
       if (!isElectron) {
         workspaceRootHandle = state.rootHandle ?? null;
         fileHandle = state.currentFileHandle ?? null;
@@ -2789,15 +2895,33 @@ function mount(): void {
         handle: isElectron && kind === "directory" && !isElectronWorkspaceHandle(handle)
           ? { kind, name, path: inferElectronRootPath(name, electronFilePath) ?? "" }
           : handle,
-        children: isElectron ? (children?.map(restoreNode) ?? []) : [],
+        children: isElectron || state.treeSnapshotVersion === 1 ? (children?.map(restoreNode) ?? []) : [],
         expanded,
       });
       workspaceTree = state.entries.map(restoreNode)
         .filter((node) => !isElectron || !isElectronWorkspaceHandle(node.handle) || node.handle.path !== "");
+      if (!isElectron && state.treeSnapshotVersion === 1) {
+        const markImportedDirectories = (nodes: WorkspaceTreeNode[]): void => {
+          for (const node of nodes) {
+            if (node.kind !== "directory") continue;
+            importedSnapshotDirectories.add(node);
+            markImportedDirectories(node.children);
+          }
+        };
+        markImportedDirectories(workspaceTree);
+        const rootNode = getWorkspaceNodeAtPath(state.rootNodePath);
+        const currentFileNode = getWorkspaceNodeAtPath(state.currentFileNodePath);
+        if (rootNode?.kind === "directory") workspaceRootHandle = rootNode.handle as FileSystemDirectoryHandle;
+        if (currentFileNode?.kind === "file") fileHandle = currentFileNode.handle as FileSystemFileHandle;
+      }
       renderWorkspaceList();
-      for (const node of workspaceTree) {
-        if (node.kind === "directory" && node.expanded) {
-          await scanDirectoryChildren(node);
+      if (isElectron) {
+        for (const node of workspaceTree) {
+          if (node.kind === "directory") await refreshExpandedDirectoryTree(node);
+        }
+      } else if (state.treeSnapshotVersion !== 1) {
+        for (const node of workspaceTree) {
+          if (node.kind === "directory" && node.expanded) await scanDirectoryChildren(node);
         }
       }
       if (isElectron) await expandElectronPathToActiveFile();
@@ -3830,8 +3954,9 @@ function mount(): void {
     headingCount = {};
     mermaidQueue = [];
     revokePreviewAssetObjectUrls();
+    const documentFormat = documentFormatForPath(docFileName);
 
-    if (isPlantUmlDocumentPath(docFileName)) {
+    if (documentFormat === "plantuml") {
       const sanitizeOpts = {
         ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
         ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
@@ -3852,7 +3977,7 @@ function mount(): void {
       return;
     }
 
-    if (!isMarkdownDocumentPath(docFileName) && !isXmindDocumentPath(docFileName)) {
+    if (documentFormat === "text") {
       const lang = prismLangForSourcePreview(docFileName, docSource);
       let displayContent = docSource;
       const langClass = lang ? ` class="language-${lang}"` : "";
@@ -3944,9 +4069,11 @@ function mount(): void {
       return;
     }
 
-    const markdownContent = isXmindDocumentPath(docFileName) && docXmindRenderContent != null
+    const markdownContent = documentFormat === "xmind" && docXmindRenderContent != null
       ? docXmindRenderContent
-      : docSource;
+      : documentFormat === "mermaid"
+        ? `\`\`\`mermaid\n${normalizeMermaidSource(docSource)}\n\`\`\``
+        : docSource;
     const preprocessed = preprocessMath(preprocessMyST(markdownContent));
     const raw = await marked.parse(preprocessed);
     if (renderSeq !== documentRenderSeq) return;
@@ -4101,9 +4228,10 @@ function mount(): void {
 
   function updateSourceFileLabel(): void {
     const targetPath = getDisplayFilePath();
-    sourceFileLabel.textContent = targetPath;
-    sourceFileLabel.title = targetPath;
-    sourceFileLabel.setAttribute("aria-label", targetPath);
+    const displayText = `${_t("source_file")}: ${targetPath}`;
+    sourceFileLabel.textContent = displayText;
+    sourceFileLabel.title = displayText;
+    sourceFileLabel.setAttribute("aria-label", displayText);
   }
 
   function scheduleRender(): void {
@@ -4361,6 +4489,7 @@ function mount(): void {
     addFileNode(h.name, h);
     activateDefaultPreviewTab();
     scheduleRender();
+    if (!isElectron) await persistWebWorkspace();
   }
 
   async function applyElectronPathOpen(filePath: string): Promise<void> {

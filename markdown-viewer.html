@@ -225,6 +225,23 @@ main.single-panel .resizer { display: none; }
   color: var(--fg-muted);
   font-weight: 600;
 }
+.source-file-header {
+  padding: 0.5rem 1rem 0;
+}
+.source-file-label {
+  display: block;
+  width: 100%;
+  padding: 0.25rem 0 0.625rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Source editor */
 #source {
@@ -974,9 +991,13 @@ html[data-theme="dark"] .plantuml-block img {
 .workspace-item:hover {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
-.workspace-item.active {
+.workspace-item.active,
+.workspace-item.active-ancestor {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
+}
+.workspace-item.active-ancestor {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .workspace-item-icon {
   flex-shrink: 0;
@@ -998,7 +1019,8 @@ html[data-theme="dark"] .plantuml-block img {
 .workspace-expand-icon:hover {
   color: var(--accent);
 }
-.workspace-item.active .workspace-item-icon {
+.workspace-item.active .workspace-item-icon,
+.workspace-item.active-ancestor .workspace-item-icon {
   color: var(--accent);
 }
 .workspace-item-name {
@@ -1008,7 +1030,11 @@ html[data-theme="dark"] .plantuml-block img {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.workspace-item-remove {
+.workspace-item.active-ancestor .workspace-item-name {
+  font-weight: 600;
+}
+.workspace-item-remove,
+.workspace-item-refresh {
   flex-shrink: 0;
   width: 1.25rem;
   height: 1.25rem;
@@ -1024,11 +1050,16 @@ html[data-theme="dark"] .plantuml-block img {
   opacity: 0;
   transition: opacity .15s, background .15s, color .15s;
 }
-.workspace-item:hover .workspace-item-remove {
+.workspace-item:hover .workspace-item-remove,
+.workspace-item:hover .workspace-item-refresh {
   opacity: 1;
 }
 .workspace-item-remove:hover {
   background: #ff3b30;
+  color: #fff;
+}
+.workspace-item-refresh:hover {
+  background: var(--accent);
   color: #fff;
 }
 .workspace-resizer {
@@ -1064,6 +1095,7 @@ html[data-theme="dark"] .plantuml-block img {
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-css.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-yaml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-ini.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-java.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-c.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-cpp.min.js"></script>
@@ -1105,7 +1137,7 @@ html[data-theme="dark"] .plantuml-block img {
       case_sensitive: "Case sensitive", regex: "Regex", whole_word: "Whole word", preserve_case: "Preserve case", toggle_replace: "Toggle replace",
       close: "Close (Esc)", replace_one: "Replace", replace_all: "Replace all",
       replace_escape: "Replace escape sequences (\\n, \\t, etc.)", no_matches: "No matches",
-      markdown_source: "Markdown source", preview_label: "Preview", settings_title: "Settings",
+      markdown_source: "Markdown source", source_file: "Source file", preview_label: "Preview", settings_title: "Settings",
       close_settings: "Close settings", fit_width: "Fit to Width", convert_tabs: "Convert Tabs to Spaces",
       tab_size: "Tab Size", image_format: "Image Format", copy_code: "Copy code", copied: "Copied",
       copy_failed: "Could not copy to clipboard.", untitled: "Untitled",
@@ -1150,7 +1182,7 @@ html[data-theme="dark"] .plantuml-block img {
       case_sensitive: "\u533a\u5206\u5927\u5c0f\u5199", regex: "\u6b63\u5219\u8868\u8fbe\u5f0f", whole_word: "\u5168\u8bcd\u5339\u914d", preserve_case: "\u4fdd\u7559\u5927\u5c0f\u5199", toggle_replace: "\u5c55\u5f00\u66ff\u6362",
       close: "\u5173\u95ed (Esc)", replace_one: "\u66ff\u6362", replace_all: "\u5168\u90e8\u66ff\u6362",
       replace_escape: "\u8f6c\u4e49\u5e8f\u5217\u66ff\u6362 (\\n, \\t \u7b49)", no_matches: "\u65e0\u5339\u914d",
-      markdown_source: "Markdown \u6e90\u7801", preview_label: "\u9884\u89c8", settings_title: "\u8bbe\u7f6e",
+      markdown_source: "Markdown \u6e90\u7801", source_file: "\u6e90\u6587\u4ef6", preview_label: "\u9884\u89c8", settings_title: "\u8bbe\u7f6e",
       close_settings: "\u5173\u95ed\u8bbe\u7f6e", fit_width: "\u9002\u5e94\u5bbd\u5ea6", convert_tabs: "Tab \u8f6c\u7a7a\u683c",
       tab_size: "Tab \u5927\u5c0f", image_format: "\u56fe\u7247\u683c\u5f0f", copy_code: "\u590d\u5236\u4ee3\u7801", copied: "\u5df2\u590d\u5236",
       copy_failed: "\u65e0\u6cd5\u590d\u5236\u5230\u526a\u8d34\u677f\u3002", untitled: "\u672a\u547d\u540d",
@@ -1211,7 +1243,9 @@ html[data-theme="dark"] .plantuml-block img {
   var mermaidRenderSeq = 0;
 
   function normalizePlantUmlSource(text) {
-    const t = text.trim();
+    var t = text.trim();
+    var fenced = t.match(/^[ \t]{0,3}`{3,}(?:plantuml|puml|\{uml\})[^\n]*\n([\s\S]*?)\n[ \t]{0,3}`{3,}[ \t]*$/i);
+    if (fenced) t = fenced[1].trim();
     if (t.includes("@startuml")) return t;
     return "@startuml\n" + t + "\n@enduml";
   }
@@ -1266,6 +1300,7 @@ html[data-theme="dark"] .plantuml-block img {
 
   var MARKDOWN_DOC_EXT = { md: 1, mdx: 1, markdown: 1, mdown: 1, mkd: 1, qmd: 1, rmd: 1, mdc: 1 };
   var PLANTUML_DOC_EXT = { puml: 1, plantuml: 1 };
+  var MERMAID_DOC_EXT = { mmd: 1, mermaid: 1 };
   var XMIND_DOC_EXT = { xmind: 1 };
 
   function pathBasename(p) {
@@ -1289,6 +1324,25 @@ html[data-theme="dark"] .plantuml-block img {
   function isPlantUmlDocumentPath(pathOrName) {
     var ext = pathFileExtension(pathOrName);
     return !!ext && PLANTUML_DOC_EXT.hasOwnProperty(ext);
+  }
+
+  function isMermaidDocumentPath(pathOrName) {
+    var ext = pathFileExtension(pathOrName);
+    return !!ext && MERMAID_DOC_EXT.hasOwnProperty(ext);
+  }
+
+  function documentFormatForPath(pathOrName) {
+    if (isMarkdownDocumentPath(pathOrName)) return "markdown";
+    if (isPlantUmlDocumentPath(pathOrName)) return "plantuml";
+    if (isMermaidDocumentPath(pathOrName)) return "mermaid";
+    if (isXmindDocumentPath(pathOrName)) return "xmind";
+    return "text";
+  }
+
+  function normalizeMermaidSource(text) {
+    var trimmed = text.trim();
+    var fenced = trimmed.match(/^[ \t]{0,3}`{3,}mermaid[^\n]*\n([\s\S]*?)\n[ \t]{0,3}`{3,}[ \t]*$/i);
+    return (fenced ? fenced[1] : trimmed).trim();
   }
 
   function isMarkdownDocumentPath(pathOrName) {
@@ -2061,7 +2115,7 @@ html[data-theme="dark"] .plantuml-block img {
     js: "javascript", mjs: "javascript", cjs: "javascript",
     ts: "typescript", mts: "typescript", cts: "typescript", tsx: "tsx", jsx: "jsx",
     css: "css", scss: "css", less: "css",
-    json: "json", yaml: "yaml", yml: "yaml", toml: "toml", am: "makefile", spec: "yaml",
+    json: "json", yaml: "yaml", yml: "yaml", ini: "ini", cfg: "ini", toml: "toml", am: "makefile", spec: "yaml",
     java: "java",
     c: "c", h: "c",
     cpp: "cpp", cxx: "cpp", cc: "cpp", hpp: "cpp", hh: "cpp", hxx: "cpp",
@@ -2072,7 +2126,7 @@ html[data-theme="dark"] .plantuml-block img {
   };
 
   var PRISM_LOADED = {
-    python: 1, javascript: 1, typescript: 1, jsx: 1, tsx: 1, css: 1, json: 1, yaml: 1,
+    python: 1, javascript: 1, typescript: 1, jsx: 1, tsx: 1, css: 1, json: 1, yaml: 1, ini: 1,
     java: 1, c: 1, cpp: 1, csharp: 1, go: 1, rust: 1, sql: 1, bash: 1, powershell: 1,
     markdown: 1, docker: 1, nginx: 1, toml: 1, makefile: 1, cmake: 1, groovy: 1
   };
@@ -2721,27 +2775,81 @@ html[data-theme="dark"] .plantuml-block img {
   var MDV_WORKSPACE_STORE = "workspace";
   var MDV_WORKSPACE_SESSION_PARAM = "mdvSession";
   var MDV_WORKSPACE_SESSION_STORAGE_KEY = "md-viewer-workspace-session";
+  var MDV_WORKSPACE_SESSION_OWNER_PREFIX = "md-viewer-workspace-session-owner:";
   var isNewWorkspaceSession = false;
   var clonedWorkspaceSessionId = null;
+  var workspaceTabId = null;
 
   function createWorkspaceSessionId() {
     return (crypto.randomUUID && crypto.randomUUID()) || (String(Date.now()) + Math.random());
   }
 
+  function workspaceSessionOwnerKey(sessionId) {
+    return MDV_WORKSPACE_SESSION_OWNER_PREFIX + sessionId;
+  }
+
+  function peekWorkspaceSessionOwner(sessionId) {
+    try {
+      var raw = localStorage.getItem(workspaceSessionOwnerKey(sessionId));
+      if (!raw) return null;
+      var owner = JSON.parse(raw);
+      if (!owner || !owner.tabId || typeof owner.ts !== "number") return null;
+      return owner;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function isWorkspaceSessionLiveInAnotherTab(sessionId) {
+    var owner = peekWorkspaceSessionOwner(sessionId);
+    if (!owner || owner.tabId === workspaceTabId) return false;
+    // Background timers are throttled; keep a generous TTL so Duplicate still sees the original tab.
+    return (Date.now() - owner.ts) < 120000;
+  }
+
+  function claimWorkspaceSession(sessionId) {
+    try {
+      localStorage.setItem(workspaceSessionOwnerKey(sessionId), JSON.stringify({ tabId: workspaceTabId, ts: Date.now() }));
+    } catch (e) {}
+  }
+
+  function releaseWorkspaceSession(sessionId) {
+    try {
+      var owner = peekWorkspaceSessionOwner(sessionId);
+      if (owner && owner.tabId === workspaceTabId) localStorage.removeItem(workspaceSessionOwnerKey(sessionId));
+    } catch (e) {}
+  }
+
+  function adoptWorkspaceSession(sessionId) {
+    claimWorkspaceSession(sessionId);
+    setInterval(function() { claimWorkspaceSession(sessionId); }, 1000);
+    window.addEventListener("pagehide", function() { releaseWorkspaceSession(sessionId); });
+    window.addEventListener("beforeunload", function() { releaseWorkspaceSession(sessionId); });
+  }
+
   function getWorkspaceSessionId() {
+    workspaceTabId = createWorkspaceSessionId();
     var querySessionId = new URLSearchParams(window.location.search).get(MDV_WORKSPACE_SESSION_PARAM);
     if (querySessionId) {
       isNewWorkspaceSession = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY) !== querySessionId;
       sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, querySessionId);
+      adoptWorkspaceSession(querySessionId);
       return querySessionId;
     }
     var storedSessionId = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY);
     var navigation = performance.getEntriesByType("navigation")[0];
-    if (storedSessionId && (!navigation || (navigation.type !== "navigate" && navigation.type !== "reload"))) return storedSessionId;
-    if (storedSessionId && navigation && navigation.type === "navigate") clonedWorkspaceSessionId = storedSessionId;
+    var navType = navigation && navigation.type;
+    var liveInOtherTab = !!(storedSessionId && isWorkspaceSessionLiveInAnotherTab(storedSessionId));
+    // Reload in the same tab keeps the workspace. Duplicate copies sessionStorage and must not.
+    if (storedSessionId && navType === "reload" && !liveInOtherTab) {
+      adoptWorkspaceSession(storedSessionId);
+      return storedSessionId;
+    }
+    if (storedSessionId) clonedWorkspaceSessionId = storedSessionId;
     var sessionId = createWorkspaceSessionId();
     isNewWorkspaceSession = true;
     sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, sessionId);
+    adoptWorkspaceSession(sessionId);
     return sessionId;
   }
 
@@ -3026,8 +3134,10 @@ html[data-theme="dark"] .plantuml-block img {
               '</div>' +
             '</div>' +
           '</div>' +
-          '<label for="source" data-i18n="markdown_source">Markdown source</label>' +
-          '<textarea id="source" spellcheck="false" data-i18n="markdown_source" data-i18n-attr="aria-label"></textarea>' +
+          '<div class="source-file-header">' +
+            '<label id="source-file-label" for="source" class="source-file-label" title="Markdown source">Markdown source</label>' +
+          '</div>' +
+          '<textarea id="source" spellcheck="false" autocomplete="off" data-i18n="markdown_source" data-i18n-attr="aria-label"></textarea>' +
         '</section>' +
         '<div class="resizer" id="resizer"></div>' +
         '<section class="panel" id="panel-preview">' +
@@ -3098,6 +3208,7 @@ html[data-theme="dark"] .plantuml-block img {
       '</dialog>';
 
     const source = document.getElementById("source");
+    const sourceFileLabel = document.getElementById("source-file-label");
     const preview = document.getElementById("preview");
     const previewWrap = document.getElementById("preview-wrap");
     const formatSelect = document.getElementById("uml-format");
@@ -3133,6 +3244,7 @@ html[data-theme="dark"] .plantuml-block img {
 
     var workspaceTree = [];
     var workspaceVisible = true;
+    var workspaceRestoreComplete = false;
 
     function updateWorkspaceVisibility() {
       workspaceSidebar.classList.toggle("hidden", !workspaceVisible);
@@ -3141,22 +3253,46 @@ html[data-theme="dark"] .plantuml-block img {
       btnWorkspace.title = workspaceVisible ? t("hide_workspace") : t("show_workspace");
     }
 
+    function resolveActiveWorkspaceNode(nodes, parent) {
+      var ancestors = [];
+      if (parent) ancestors.push(parent);
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.kind === "file" && fileHandle && node.handle === fileHandle) {
+          return { fileNode: node, ancestorNodes: ancestors.slice() };
+        }
+        if (node.kind === "directory") {
+          var childMatch = resolveActiveWorkspaceNode(node.children, node);
+          if (childMatch.fileNode) {
+            childMatch.ancestorNodes.push(node);
+            return childMatch;
+          }
+        }
+      }
+      return { fileNode: null, ancestorNodes: [] };
+    }
+
     function renderWorkspaceList() {
       if (workspaceTree.length === 0) {
         workspaceList.innerHTML = '<div class="workspace-empty" data-i18n="workspace_empty">' + t("workspace_empty") + '</div>';
         return;
       }
+      var activeContext = resolveActiveWorkspaceNode(workspaceTree, null);
       workspaceList.innerHTML = "";
       for (var i = 0; i < workspaceTree.length; i++) {
-        renderTreeNode(workspaceTree[i], 0);
+        renderTreeNode(workspaceTree[i], 0, activeContext);
       }
     }
 
-    function renderTreeNode(node, depth) {
+    function renderTreeNode(node, depth, activeContext) {
       var item = document.createElement("div");
       item.className = "workspace-item";
-      if (node.kind === "file" && fileHandle && node.handle === fileHandle) {
+      var isActiveFile = node.kind === "file" && activeContext.fileNode === node;
+      var isActiveAncestor = !isActiveFile && activeContext.ancestorNodes.indexOf(node) !== -1;
+      if (isActiveFile) {
         item.classList.add("active");
+      } else if (isActiveAncestor) {
+        item.classList.add("active-ancestor");
       }
       if (depth > 0) {
         item.style.paddingLeft = (0.75 + depth * 1) + "rem";
@@ -3175,7 +3311,7 @@ html[data-theme="dark"] .plantuml-block img {
           ? '<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>'
           : '<svg class="workspace-item-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>');
 
-      item.innerHTML = expandIcon + iconSvg + '<span class="workspace-item-name" title="' + escapeHtml(node.name) + '">' + escapeHtml(node.name) + '</span><button type="button" class="workspace-item-remove" title="' + t("remove_from_workspace") + '"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+      item.innerHTML = expandIcon + iconSvg + '<span class="workspace-item-name" title="' + escapeHtml(node.name) + '">' + escapeHtml(node.name) + '</span>' + (node.kind === "directory" ? '<button type="button" class="workspace-item-refresh" title="' + t("refresh_directory") + '"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>' : "") + '<button type="button" class="workspace-item-remove" title="' + t("remove_from_workspace") + '"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
 
       // Clicking expand icon
       var expandEl = item.querySelector(".workspace-expand-icon");
@@ -3194,6 +3330,7 @@ html[data-theme="dark"] .plantuml-block img {
       // Clicking item
       item.addEventListener("click", async function(e) {
         if (e.target.closest(".workspace-item-remove")) return;
+        if (e.target.closest(".workspace-item-refresh")) return;
         if (e.target.closest(".workspace-expand-icon")) return;
         if (node.kind === "file") {
           var fh = node.handle;
@@ -3213,17 +3350,30 @@ html[data-theme="dark"] .plantuml-block img {
         removeTreeNode(node);
       });
 
+      var refreshEl = item.querySelector(".workspace-item-refresh");
+      if (refreshEl) {
+        refreshEl.addEventListener("click", async function(e) {
+          e.stopPropagation();
+          e.preventDefault();
+          node.expanded = true;
+          await scanDirectoryChildren(node);
+          renderWorkspaceList();
+          await persistWorkspace();
+        });
+      }
+
       workspaceList.appendChild(item);
 
       // Render children if expanded
       if (node.kind === "directory" && node.expanded) {
         for (var j = 0; j < node.children.length; j++) {
-          renderTreeNode(node.children[j], depth + 1);
+          renderTreeNode(node.children[j], depth + 1, activeContext);
         }
       }
     }
 
     function removeTreeNode(target) {
+      var removesActiveFile = nodeContainsActiveFile(target);
       function removeFrom(arr) {
         for (var i = 0; i < arr.length; i++) {
           if (arr[i] === target) {
@@ -3237,8 +3387,35 @@ html[data-theme="dark"] .plantuml-block img {
         return false;
       }
       removeFrom(workspaceTree);
+      if (removesActiveFile) resetToDefaultDocument(target);
       renderWorkspaceList();
       persistWorkspace();
+    }
+
+    function nodeContainsActiveFile(node) {
+      if (node.kind === "file" && fileHandle && node.handle === fileHandle) return true;
+      if (node.kind !== "directory") return false;
+      for (var i = 0; i < node.children.length; i++) {
+        if (nodeContainsActiveFile(node.children[i])) return true;
+      }
+      return false;
+    }
+
+    function resetToDefaultDocument(removedNode) {
+      if (removedNode.kind === "directory" && removedNode.handle === workspaceRootHandle) {
+        workspaceRootHandle = null;
+      }
+      currentFileName = "document.md";
+      fileHandle = null;
+      currentRelPathInWorkspace = null;
+      fileOpened = false;
+      xmindRenderContent = null;
+      source.value = DEFAULT_MD;
+      source.scrollTop = 0;
+      lastSavedContent = DEFAULT_MD;
+      updateFilenameDisplay();
+      updateReopenButton();
+      scheduleRender();
     }
 
     function addFileNode(name, handle) {
@@ -3268,6 +3445,7 @@ html[data-theme="dark"] .plantuml-block img {
     }
 
     async function persistWorkspace() {
+      if (!workspaceRestoreComplete) return;
       try {
         await idbPutWorkspace({
           entries: workspaceTree.map(function(node) {
@@ -3290,11 +3468,33 @@ html[data-theme="dark"] .plantuml-block img {
       }
     }
 
+    function applyFreshViewerDefaults() {
+      workspaceTree = [];
+      workspaceRootHandle = null;
+      fileHandle = null;
+      currentRelPathInWorkspace = null;
+      currentFileName = "document.md";
+      fileOpened = false;
+      xmindRenderContent = null;
+      source.value = DEFAULT_MD;
+      source.scrollTop = 0;
+      lastSavedContent = DEFAULT_MD;
+      renderWorkspaceList();
+      updateFilenameDisplay();
+      updateReopenButton();
+      updateSourceFileLabel();
+    }
+
     async function restoreWorkspace() {
+      if (clonedWorkspaceSessionId) {
+        applyFreshViewerDefaults();
+        workspaceRestoreComplete = true;
+        scheduleRender();
+        return;
+      }
       try {
-        var state = await idbGetWorkspace(clonedWorkspaceSessionId || workspaceSessionId);
+        var state = await idbGetWorkspace(workspaceSessionId);
         if (!state || !state.entries || state.entries.length === 0) return;
-        if (clonedWorkspaceSessionId) await idbPutWorkspace(state);
         workspaceRootHandle = state.rootHandle || null;
         fileHandle = state.currentFileHandle || null;
         currentFileName = state.currentFileName || currentFileName;
@@ -3322,6 +3522,9 @@ html[data-theme="dark"] .plantuml-block img {
         updateReopenButton();
       } catch (e) {
         console.warn("Could not restore workspace:", e);
+      } finally {
+        workspaceRestoreComplete = true;
+        scheduleRender();
       }
     }
 
@@ -3352,7 +3555,7 @@ html[data-theme="dark"] .plantuml-block img {
         var h = entries[i];
         if (h.kind === "file") {
           var ext = h.name.split(".").pop().toLowerCase();
-          if (["md","markdown","mdown","mkd","puml","plantuml","xmind","txt","json","yaml","yml","xml","toml","csv","html","css","js","ts","jsx","tsx","py","java","c","cpp","h","hpp","rs","go","rb","php","sh","bash","zsh","fish","ps1","bat","cmd","sql","r","scala","kt","swift","m","mm","dart","lua","pl","pm","t","pas","d","nim","ex","exs","ml","fs","vim","lisp","clj","cljs","edn","coffee","litcoffee","tsx","jsx","vue","svelte","astro","mdx"].indexOf(ext) >= 0) {
+          if (["md","markdown","mdown","mkd","puml","plantuml","mmd","mermaid","xmind","txt","json","yaml","yml","xml","toml","csv","html","css","js","ts","jsx","tsx","py","java","c","cpp","h","hpp","rs","go","rb","php","sh","bash","zsh","fish","ps1","bat","cmd","sql","r","scala","kt","swift","m","mm","dart","lua","pl","pm","t","pas","d","nim","ex","exs","ml","fs","vim","lisp","clj","cljs","edn","coffee","litcoffee","tsx","jsx","vue","svelte","astro","mdx"].indexOf(ext) >= 0) {
             parentNode.children.push({ name: h.name, kind: "file", handle: h, children: [], expanded: false });
           }
         } else if (h.kind === "directory") {
@@ -3379,6 +3582,7 @@ html[data-theme="dark"] .plantuml-block img {
     var btnLang = document.getElementById("btn-lang");
     btnLang.addEventListener("click", function() {
       setLocale(currentLocale === "en" ? "zh" : "en");
+      updateSourceFileLabel();
     });
     applyI18n();
 
@@ -3417,7 +3621,7 @@ html[data-theme="dark"] .plantuml-block img {
       }
     }
 
-    if ((isNewWorkspaceSession && !clonedWorkspaceSessionId) || !source.value) {
+    if (isNewWorkspaceSession || !source.value) {
       source.value = DEFAULT_MD;
     }
     updateFilenameDisplay();
@@ -3562,8 +3766,9 @@ html[data-theme="dark"] .plantuml-block img {
       // Reset heading counter for duplicate ID handling
       headingCount = {};
       mermaidQueue = [];
+      var documentFormat = documentFormatForPath(currentFileName);
 
-      if (isPlantUmlDocumentPath(currentFileName)) {
+      if (documentFormat === "plantuml") {
         var sanitizeOptsPlant = {
           ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
           ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"]
@@ -3587,7 +3792,7 @@ html[data-theme="dark"] .plantuml-block img {
         return;
       }
 
-      if (!isMarkdownDocumentPath(currentFileName) && !isXmindDocumentPath(currentFileName)) {
+      if (documentFormat === "text") {
         var lang = prismLangForSourcePreview(currentFileName, source.value);
         var displayContent = source.value;
         var ext = pathFileExtension(currentFileName);
@@ -3678,9 +3883,11 @@ html[data-theme="dark"] .plantuml-block img {
         return;
       }
 
-      var markdownContent = isXmindDocumentPath(currentFileName) && xmindRenderContent != null
+      var markdownContent = documentFormat === "xmind" && xmindRenderContent != null
         ? xmindRenderContent
-        : source.value;
+        : documentFormat === "mermaid"
+          ? "```mermaid\n" + normalizeMermaidSource(source.value) + "\n```"
+          : source.value;
       var preprocessed = preprocessMyST(markdownContent);
       const raw = marked.parse(preprocessed);
       preview.innerHTML = DOMPurify.sanitize(raw, {
@@ -3801,21 +4008,47 @@ html[data-theme="dark"] .plantuml-block img {
       if (window.__refreshPreviewFind) window.__refreshPreviewFind();
     }
 
+    function getDisplayFilePath() {
+      if (currentRelPathInWorkspace) {
+        var rootName = workspaceRootHandle && workspaceRootHandle.name;
+        if (rootName && currentRelPathInWorkspace !== rootName && currentRelPathInWorkspace.indexOf(rootName + "/") !== 0) {
+          return rootName + "/" + currentRelPathInWorkspace;
+        }
+        return currentRelPathInWorkspace;
+      }
+      return currentFileName;
+    }
+
+    function updateSourceFileLabel() {
+      var targetPath = getDisplayFilePath();
+      var displayText = t("source_file") + ": " + targetPath;
+      sourceFileLabel.textContent = displayText;
+      sourceFileLabel.title = displayText;
+      sourceFileLabel.setAttribute("aria-label", displayText);
+    }
+
     var timer;
     function scheduleRender() {
+      updateSourceFileLabel();
       clearTimeout(timer);
-      timer = setTimeout(render, 120);
+      timer = setTimeout(function() {
+        render();
+        persistWorkspace();
+      }, 120);
     }
 
     source.addEventListener("input", scheduleRender);
     source.addEventListener("change", scheduleRender);
 
-    // Initial render (handles tab copy where browser restores textarea but not preview)
+    // Initial render
     scheduleRender();
 
-    // Handle browser back/forward navigation (bfcache restore)
+    var resetClonedTabOnce = !!clonedWorkspaceSessionId;
     window.addEventListener("pageshow", function(event) {
-      // Always re-render when page becomes visible, handles bfcache
+      if (resetClonedTabOnce && !event.persisted) {
+        resetClonedTabOnce = false;
+        applyFreshViewerDefaults();
+      }
       setTimeout(function() {
         render();
       }, 10);
@@ -3961,6 +4194,7 @@ html[data-theme="dark"] .plantuml-block img {
       // Auto-add to workspace
       addFileNode(h.name, h);
       scheduleRender();
+      await persistWorkspace();
     }
 
     async function consumePendingTransferFromUrl() {

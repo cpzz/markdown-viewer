@@ -27,26 +27,11 @@ function createWindow() {
   const webContentsId = mainWindow.webContents.id;
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') return;
     console.error('[electron-lifecycle] render-process-gone', {
       at: new Date().toISOString(),
       reason: details.reason,
       exitCode: details.exitCode,
-    });
-  });
-
-  mainWindow.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
-    if (!isMainFrame) return;
-    console.warn('[electron-lifecycle] main-frame-navigation', {
-      at: new Date().toISOString(),
-      url,
-      isInPlace,
-    });
-  });
-
-  mainWindow.webContents.on('did-finish-load', () => {
-    console.warn('[electron-lifecycle] did-finish-load', {
-      at: new Date().toISOString(),
-      url: mainWindow?.webContents.getURL(),
     });
   });
 
