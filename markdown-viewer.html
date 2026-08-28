@@ -2390,63 +2390,11 @@ html[data-theme="dark"] .plantuml-block img {
 
   var headingCount = {};
 
-  function updateBlockCommentDepthForLine(line, depth) {
-    var d = depth;
-    var i = 0;
-    var inString = null;
-    var escape = false;
-    while (i < line.length) {
-      var c = line.charAt(i);
-      if (inString) {
-        if (escape) {
-          escape = false;
-          i++;
-          continue;
-        }
-        if (c === "\\") {
-          escape = true;
-          i++;
-          continue;
-        }
-        if (c === inString) {
-          inString = null;
-        }
-        i++;
-        continue;
-      }
-      if (c === "/" && line.charAt(i + 1) === "/") {
-        break;
-      }
-      if (c === "/" && line.charAt(i + 1) === "*") {
-        d++;
-        i += 2;
-        continue;
-      }
-      if (c === "*" && line.charAt(i + 1) === "/") {
-        d = d > 0 ? d - 1 : 0;
-        i += 2;
-        continue;
-      }
-      if (c === '"' || c === "'" || c === "`") {
-        inString = c;
-        i++;
-        continue;
-      }
-      i++;
-    }
-    return d;
-  }
-
   function findClosingFenceLineIndexInLines(lines, startLineIdx, fenceLen) {
     var fence = "";
     for (var fi = 0; fi < fenceLen; fi++) fence += "`";
-    var blockCommentDepth = 0;
     for (var li = startLineIdx; li < lines.length; li++) {
-      var line = lines[li];
-      if (blockCommentDepth === 0 && line.trim() === fence) {
-        return li;
-      }
-      blockCommentDepth = updateBlockCommentDepthForLine(line, blockCommentDepth);
+      if (lines[li].trim() === fence) return li;
     }
     return -1;
   }
@@ -2475,10 +2423,11 @@ html[data-theme="dark"] .plantuml-block img {
   function rewrapFenceForNestedBacktickLines(block) {
     var lines = block.split("\n");
     if (lines.length < 2) return block;
-    var openMatch = lines[0].match(/^(`{3,})([^`]*)$/);
+    var openMatch = lines[0].match(/^([ \t]{0,3})(`{3,})([^`]*)$/);
     if (!openMatch) return block;
-    var f = openMatch[1].length;
-    var info = openMatch[2];
+    var indent = openMatch[1];
+    var f = openMatch[2].length;
+    var info = openMatch[3];
     var maxBt = 0;
     for (var li = 1; li < lines.length - 1; li++) {
       var trimmed = lines[li].trim();
@@ -2491,7 +2440,7 @@ html[data-theme="dark"] .plantuml-block img {
     var nf = maxBt + 1;
     var fence = "";
     for (var fk = 0; fk < nf; fk++) fence += "`";
-    return [fence + info].concat(lines.slice(1, -1), [fence]).join("\n");
+    return [indent + fence + info].concat(lines.slice(1, -1), [indent + fence]).join("\n");
   }
 
   /**
@@ -2691,7 +2640,7 @@ html[data-theme="dark"] .plantuml-block img {
       var out = [];
       var i = 0;
       while (i < lines.length) {
-        var open = lines[i].match(/^(`{3,})([^`]*)$/);
+        var open = lines[i].match(/^[ \t]{0,3}(`{3,})([^`]*)$/);
         if (!open) {
           out.push(lines[i]);
           i++;
