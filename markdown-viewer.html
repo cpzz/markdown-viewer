@@ -613,7 +613,7 @@ html:not([data-theme="dark"]) .token.variable {
 #preview.fit-width table { max-width: 100%; }
 #preview.fit-width pre { max-width: 100%; }
 #preview.fit-width .code-block-wrap { max-width: 100%; }
-#preview.fit-width .plantuml-block img { max-width: 100%; }
+#preview.fit-width .plantuml-block svg { max-width: 100%; }
 
 /* Lists */
 #preview ul, #preview ol { padding-left: 1.5em; margin: 0.5em 0; }
@@ -629,14 +629,14 @@ html:not([data-theme="dark"]) .token.variable {
   background: var(--bg-diagram);
   overflow: auto;
 }
-.plantuml-block img { max-width: none; }
+.plantuml-block svg { max-width: none; height: auto; }
 
-/* PlantUML dark mode: invert image colors so white background → dark, dark text → light */
-html[data-theme="dark"] .plantuml-block img {
+/* PlantUML dark mode: invert colors so white background → dark, dark text → light */
+html[data-theme="dark"] .plantuml-block svg {
   filter: invert(1) hue-rotate(180deg);
 }
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) .plantuml-block img {
+  html:not([data-theme="light"]) .plantuml-block svg {
     filter: invert(1) hue-rotate(180deg);
   }
 }
@@ -1084,7 +1084,6 @@ html[data-theme="dark"] .plantuml-block img {
   <!-- CDN dependencies -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder/dist/plantuml-encoder.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
@@ -1139,9 +1138,9 @@ html[data-theme="dark"] .plantuml-block img {
       replace_escape: "Replace escape sequences (\\n, \\t, etc.)", no_matches: "No matches",
       markdown_source: "Markdown source", source_file: "Source file", preview_label: "Preview", settings_title: "Settings",
       close_settings: "Close settings", fit_width: "Fit to Width", convert_tabs: "Convert Tabs to Spaces",
-      tab_size: "Tab Size", image_format: "Image Format", copy_code: "Copy code", copied: "Copied",
+      tab_size: "Tab Size", copy_code: "Copy code", copied: "Copied",
       copy_failed: "Could not copy to clipboard.", untitled: "Untitled",
-      plantuml_error: "PlantUML encode error", mermaid_error: "Mermaid error",
+      plantuml_error: "PlantUML error", mermaid_error: "Mermaid error",
       folder_link_unavailable: "Folder linking is not available in this browser. Try Chrome or Edge.",
       folder_not_contain: "That folder does not contain the file you have open. Pick a parent folder (for example your project root) that contains this file.",
       folder_linked: "Folder linked. Use Open file \u2014 the dialog will start in this folder.",
@@ -1184,9 +1183,9 @@ html[data-theme="dark"] .plantuml-block img {
       replace_escape: "\u8f6c\u4e49\u5e8f\u5217\u66ff\u6362 (\\n, \\t \u7b49)", no_matches: "\u65e0\u5339\u914d",
       markdown_source: "Markdown \u6e90\u7801", source_file: "\u6e90\u6587\u4ef6", preview_label: "\u9884\u89c8", settings_title: "\u8bbe\u7f6e",
       close_settings: "\u5173\u95ed\u8bbe\u7f6e", fit_width: "\u9002\u5e94\u5bbd\u5ea6", convert_tabs: "Tab \u8f6c\u7a7a\u683c",
-      tab_size: "Tab \u5927\u5c0f", image_format: "\u56fe\u7247\u683c\u5f0f", copy_code: "\u590d\u5236\u4ee3\u7801", copied: "\u5df2\u590d\u5236",
+      tab_size: "Tab \u5927\u5c0f", copy_code: "\u590d\u5236\u4ee3\u7801", copied: "\u5df2\u590d\u5236",
       copy_failed: "\u65e0\u6cd5\u590d\u5236\u5230\u526a\u8d34\u677f\u3002", untitled: "\u672a\u547d\u540d",
-      plantuml_error: "PlantUML \u7f16\u7801\u9519\u8bef", mermaid_error: "Mermaid \u9519\u8bef",
+      plantuml_error: "PlantUML \u6e32\u67d3\u9519\u8bef", mermaid_error: "Mermaid \u9519\u8bef",
       folder_link_unavailable: "\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u6587\u4ef6\u5939\u5173\u8054\u3002\u8bf7\u4f7f\u7528 Chrome \u6216 Edge\u3002",
       folder_not_contain: "\u8be5\u6587\u4ef6\u5939\u4e0d\u5305\u542b\u5f53\u524d\u6253\u5f00\u7684\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u4e00\u4e2a\u5305\u542b\u8be5\u6587\u4ef6\u7684\u7236\u6587\u4ef6\u5939\uff08\u4f8b\u5982\u9879\u76ee\u6839\u76ee\u5f55\uff09\u3002",
       folder_linked: "\u6587\u4ef6\u5939\u5df2\u5173\u8054\u3002\u4f7f\u7528\u201c\u6253\u5f00\u6587\u4ef6\u201d\u6309\u94ae\uff0c\u5bf9\u8bdd\u6846\u5c06\u4ece\u8be5\u6587\u4ef6\u5939\u5f00\u59cb\u3002",
@@ -1237,10 +1236,51 @@ html[data-theme="dark"] .plantuml-block img {
   function setLocale(lang) { currentLocale = lang; localStorage.setItem("locale", lang); applyI18n(); }
   /* ── end i18n ─────────────────────────────────────────────────── */
 
-  const PLANTUML_BASE = "https://www.plantuml.com/plantuml";
-  let plantumlOutputFormat = "svg";
   var mermaidQueue = [];
   var mermaidRenderSeq = 0;
+  var plantumlQueue = [];
+  var plantumlRenderSeq = 0;
+  var plantumlApiPromise = null;
+  var plantumlRenderChain = Promise.resolve();
+  var PLANTUML_CORE_VIZ = "https://cdn.jsdelivr.net/npm/@plantuml/core@1.2026.7/viz-global.js";
+  var PLANTUML_CORE_ENGINE = "https://cdn.jsdelivr.net/npm/@plantuml/core@1.2026.7/plantuml.js";
+
+  function loadClassicScript(src, marker) {
+    return new Promise(function(resolve, reject) {
+      var existing = document.querySelector("script[" + marker + "]");
+      if (existing) {
+        if (existing.getAttribute("data-loaded") === "1") {
+          resolve();
+          return;
+        }
+        existing.addEventListener("load", function() { resolve(); }, { once: true });
+        existing.addEventListener("error", function() { reject(new Error("Failed to load " + src)); }, { once: true });
+        return;
+      }
+      var script = document.createElement("script");
+      script.src = src;
+      script.async = false;
+      script.setAttribute(marker, "1");
+      script.onload = function() {
+        script.setAttribute("data-loaded", "1");
+        if (!window.Viz) {
+          reject(new Error("viz-global.js did not expose Viz"));
+          return;
+        }
+        resolve();
+      };
+      script.onerror = function() { reject(new Error("Failed to load " + src)); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function ensurePlantuml() {
+    if (plantumlApiPromise) return plantumlApiPromise;
+    plantumlApiPromise = loadClassicScript(PLANTUML_CORE_VIZ, "data-plantuml-viz").then(function() {
+      return import(PLANTUML_CORE_ENGINE);
+    });
+    return plantumlApiPromise;
+  }
 
   function normalizePlantUmlSource(text) {
     var t = text.trim();
@@ -1250,17 +1290,28 @@ html[data-theme="dark"] .plantuml-block img {
     return "@startuml\n" + t + "\n@enduml";
   }
 
-  function plantumlDataUrl(source, format) {
-    const encoded = plantumlEncoder.encode(normalizePlantUmlSource(source));
-    return PLANTUML_BASE + "/" + format + "/" + encoded;
+  function renderPlantUmlSvg(source) {
+    var lines = normalizePlantUmlSource(source).split(/\r\n|\r|\n/);
+    var run = function() {
+      return ensurePlantuml().then(function(api) {
+        return new Promise(function(resolve, reject) {
+          api.renderToString(lines, function(svg) {
+            resolve(String(svg).replace(/<\?xml[^?]*\?>/i, "").trim());
+          }, function(message) {
+            reject(new Error(message));
+          });
+        });
+      });
+    };
+    var next = plantumlRenderChain.then(run, run);
+    plantumlRenderChain = next.then(function() {}, function() {});
+    return next;
   }
 
-  function renderPlantUmlBlock(source, format) {
-    const url = plantumlDataUrl(source, format);
-    const safeUrl = DOMPurify.sanitize(url, { ALLOWED_URI_REGEXP: /^https?:/i });
-    return '<figure class="plantuml-block">' +
-      '<img src="' + safeUrl + '" alt="PlantUML diagram" loading="lazy" />' +
-      '</figure>';
+  function queuePlantUmlBlock(source) {
+    var id = "plantuml-block-" + plantumlQueue.length;
+    plantumlQueue.push({ id: id, source: source });
+    return '<figure class="plantuml-block" id="' + id + '"></figure>';
   }
 
   function escapeHtml(s) {
@@ -2699,11 +2750,7 @@ html[data-theme="dark"] .plantuml-block img {
       code: function(token) {
         const lang = (token.lang || "").toLowerCase().split(/\s+/)[0];
         if (lang === "plantuml" || lang === "puml" || lang === "{uml}") {
-          try {
-            return renderPlantUmlBlock(token.text, plantumlOutputFormat);
-          } catch (e) {
-            return '<p class="plantuml-error">' + t("plantuml_error") + ': ' + escapeHtml(e.message) + '</p>';
-          }
+          return queuePlantUmlBlock(token.text);
         }
         if (lang === "mermaid") {
           var id = "mermaid-block-" + mermaidQueue.length;
@@ -3142,15 +3189,6 @@ html[data-theme="dark"] .plantuml-block img {
                 '</select>' +
               '</div>' +
             '</div>' +
-            '<div class="settings-row" role="group" aria-labelledby="image-format-label">' +
-              '<span id="image-format-label" class="settings-row__label" data-i18n="image_format">Image Format</span>' +
-              '<div class="settings-row__control">' +
-                '<select id="uml-format" aria-labelledby="image-format-label" data-i18n="image_format" data-i18n-attr="aria-label">' +
-                  '<option value="svg" selected>SVG</option>' +
-                  '<option value="png">PNG</option>' +
-                '</select>' +
-              '</div>' +
-            '</div>' +
           '</div>' +
         '</div>' +
         '</div>' +
@@ -3160,7 +3198,6 @@ html[data-theme="dark"] .plantuml-block img {
     const sourceFileLabel = document.getElementById("source-file-label");
     const preview = document.getElementById("preview");
     const previewWrap = document.getElementById("preview-wrap");
-    const formatSelect = document.getElementById("uml-format");
     const fileOpenInput = document.getElementById("file-open");
     const btnOpenFile = document.getElementById("btn-open-file");
     const btnReopenFile = document.getElementById("btn-reopen-file");
@@ -3711,10 +3748,36 @@ html[data-theme="dark"] .plantuml-block img {
       });
     }
 
+    function fillPlantumlQueue(seq) {
+      var items = plantumlQueue.slice();
+      var chain = Promise.resolve();
+      items.forEach(function(item) {
+        chain = chain.then(function() {
+          if (seq !== plantumlRenderSeq) return;
+          var el = preview.querySelector("#" + item.id);
+          if (!el) return;
+          return renderPlantUmlSvg(item.source).then(function(svg) {
+            if (seq !== plantumlRenderSeq) return;
+            el.innerHTML = svg;
+          }).catch(function(e) {
+            if (seq !== plantumlRenderSeq) return;
+            var msg = e && e.message ? e.message : String(e);
+            el.innerHTML = '<p class="plantuml-error">' + t("plantuml_error") + ': ' + escapeHtml(msg) + '</p>';
+          });
+        });
+      });
+      return chain.then(function() {
+        if (seq !== plantumlRenderSeq) return;
+        activatePlantumlBlocks();
+      });
+    }
+
     function render() {
       // Reset heading counter for duplicate ID handling
       headingCount = {};
       mermaidQueue = [];
+      plantumlQueue = [];
+      var pumlSeq = ++plantumlRenderSeq;
       var documentFormat = documentFormatForPath(currentFileName);
 
       if (documentFormat === "plantuml") {
@@ -3722,22 +3785,12 @@ html[data-theme="dark"] .plantuml-block img {
           ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
           ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"]
         };
-        try {
-          var figPlant = renderPlantUmlBlock(source.value, plantumlOutputFormat);
-          preview.innerHTML = DOMPurify.sanitize(
-            '<article class="preview-plantuml-file">' + figPlant + "</article>",
-            sanitizeOptsPlant
-          );
-        } catch (ePlant) {
-          var msgPlant = ePlant && ePlant.message ? ePlant.message : String(ePlant);
-          preview.innerHTML = DOMPurify.sanitize(
-            '<article class="preview-plantuml-file"><p class="plantuml-error">' + t("plantuml_error") + ': ' +
-              escapeHtml(msgPlant) +
-              "</p></article>",
-            sanitizeOptsPlant
-          );
-        }
-        activatePlantumlBlocks();
+        var figPlant = queuePlantUmlBlock(source.value);
+        preview.innerHTML = DOMPurify.sanitize(
+          '<article class="preview-plantuml-file">' + figPlant + "</article>",
+          sanitizeOptsPlant
+        );
+        fillPlantumlQueue(pumlSeq);
         return;
       }
 
@@ -3953,7 +4006,7 @@ html[data-theme="dark"] .plantuml-block img {
         });
       });
 
-      activatePlantumlBlocks();
+      fillPlantumlQueue(pumlSeq);
       if (window.__refreshPreviewFind) window.__refreshPreviewFind();
     }
 
@@ -4001,11 +4054,6 @@ html[data-theme="dark"] .plantuml-block img {
       setTimeout(function() {
         render();
       }, 10);
-    });
-
-    formatSelect.addEventListener("change", function() {
-      plantumlOutputFormat = formatSelect.value === "png" ? "png" : "svg";
-      scheduleRender();
     });
 
     function hasFilePayload(dt) {

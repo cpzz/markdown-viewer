@@ -9,12 +9,12 @@
 - **多格式文档渲染**：支持 Markdown (GFM)、PlantUML 图表，以及 100+ 编程语言的语法高亮
 - **实时预览**：带防抖更新的实时渲染，提供流畅的编辑体验
 - **内置源代码编辑器**：完整的文本编辑功能，包括语法高亮、查找替换和直接文件保存
-- **PlantUML 集成**：通过官方 PlantUML 服务器渲染 UML 图表，自动补全 `@startuml`/`@enduml` 标签
+- **PlantUML 集成**：使用官方 `@plantuml/core` 在浏览器内渲染 UML 图表（不访问 plantuml.com），并自动补全 `@startuml`/`@enduml` 标签
 - **MyST (Markedly Structured Text) 支持**：`{tab-set}`、`{tab-item}`、`{grid}`、`{grid-item}` 指令
 - **文件系统访问**：拖放或文件选择器加载文件；通过 File System Access API 直接保存（Chrome/Edge）
 - **查找与替换**：编辑器内搜索，支持正则表达式、大小写敏感匹配和匹配项导航
 - **灵活布局**：可调整大小的分屏面板，可切换源代码/预览视图
-- **图表输出选项**：支持 SVG 或 PNG 格式的 PlantUML 和 Mermaid 图表
+- **图表输出**：PlantUML 与 Mermaid 图表渲染为 SVG
 - **智能链接处理**：内部锚点保留在预览中；外部链接在新标签页打开；相对文件链接在新窗口中打开，支持工作区文件夹关联
 - **主题支持**：跟随系统偏好的深色/浅色模式
 - **响应式设计**：自适应各种屏幕尺寸的布局
@@ -29,7 +29,7 @@ markdown-viewer.html   <- 双击在浏览器中打开
 
 环境要求：
 - 现代浏览器（Chrome、Firefox、Edge、Safari）
-- 网络连接（用于加载 CDN 库和 PlantUML 渲染）
+- 网络连接（单文件 HTML 用于加载 CDN 库；PlantUML 在浏览器内渲染，不再访问 plantuml.com）
 
 当前项目中的 LaTeX 支持范围：
 - 数学公式在浏览器端渲染（KaTeX 子集），不是完整 TeX 引擎。
@@ -134,7 +134,7 @@ winget install Microsoft.DotNet.SDK.10
 | 文件名后缀 | 预览行为 |
 |-----------|---------|
 | `.md`、`.mdx`、`.markdown`、`.mdown`、`.mkd`、`.qmd`、`.rmd`、`.mdc` | 完整 Markdown (GFM)、MyST、PlantUML（围栏代码块）、Mermaid |
-| `.puml`、`.plantuml` | **整文件** 作为 PlantUML 源码处理（与围栏代码块使用相同服务器；`@startuml` 可选 — 缺失时自动补全） |
+| `.puml`、`.plantuml` | **整文件** 作为 PlantUML 源码处理（与围栏代码块使用同一套浏览器内引擎；`@startuml` 可选 — 缺失时自动补全） |
 | 如 `.py`、`.ts`、`.json`、`.toml`、`.am`（makefile 语法）、`.spec`（YAML 语法）等 | 整个缓冲区作为 **一个代码块** 使用 Prism 语法高亮；**不** 作为 Markdown 解析 |
 | 精确文件名（不区分大小写）：`Dockerfile`、`Containerfile`、`Jenkinsfile`、`Makefile`、`GNUmakefile`、`CMakeLists.txt` | 分别使用 **docker**、**docker**、**groovy**、**bash**、**bash**、**cmake** 语法高亮（整文件源代码预览） |
 | 无扩展名，或 **没有** 内置高亮器映射的后缀 | 同样的 **源代码预览**；如果第一个非空行是 **shebang**（`#!/usr/bin/bash`、`#!/usr/bin/env python3`、`#!/usr/bin/env node`、`#!/usr/bin/go` 等），则根据匹配的内置语法推断 Prism 语言（bash、python、JavaScript、TypeScript、TSX、PowerShell、Go） |
@@ -166,7 +166,7 @@ winget install Microsoft.DotNet.SDK.10
 
 ### PlantUML 语法
 
-你可以直接打开 **`.puml` 或 `.plantuml` 文件**：编辑器显示原始源码，预览通过相同的 PlantUML 服务器渲染图表（包括在省略 `@startuml` / `@enduml` 标签时自动补全）。
+你可以直接打开 **`.puml` 或 `.plantuml` 文件**：编辑器显示原始源码，预览在浏览器内渲染图表（包括在省略 `@startuml` / `@enduml` 标签时自动补全）。
 
 使用 `plantuml`、`puml` 或 `{uml}` 语言的围栏代码块：
 
@@ -281,7 +281,7 @@ markdown-plantuml-viewer/
 ├── src/
 │   ├── main.ts             # 应用代码
 │   ├── style.css           # 样式
-│   ├── plantuml-encoder.d.ts
+│   ├── plantuml-core.d.ts
 │   └── file-system-access.d.ts
 ├── webview2/               # WebView2 桌面应用源码（仅 Windows）
 ├── dist/                   # 构建输出（自动生成）
@@ -294,7 +294,7 @@ markdown-plantuml-viewer/
 |------|------|
 | marked | Markdown 转 HTML |
 | dompurify | HTML 消毒（XSS 防护） |
-| plantuml-encoder | PlantUML 图表编码 |
+| @plantuml/core | 浏览器内 PlantUML 渲染（SVG） |
 | vite | 构建工具和开发服务器 |
 | typescript | 类型检查 |
 

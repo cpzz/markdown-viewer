@@ -4,9 +4,10 @@ import katex from "katex";
 import renderMathInElement from "katex/contrib/auto-render";
 import { marked, type Tokens } from "marked";
 import markedKatex from "marked-katex-extension";
-import * as plantumlEncoderPkg from "plantuml-encoder";
 import "katex/dist/katex.min.css";
 import "./style.css";
+import vizGlobalUrl from "@plantuml/core/viz-global.js?url";
+import plantumlEngineUrl from "@plantuml/core/plantuml.js?url";
 
 /* ── Electron environment detection ───────────────────────────────── */
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
@@ -56,13 +57,12 @@ const I18N: Record<Locale, Record<string, string>> = {
     fit_width: "Fit to Width",
     convert_tabs: "Convert Tabs to Spaces",
     tab_size: "Tab Size",
-    image_format: "Image Format",
     copy_code: "Copy code",
     copied: "Copied",
     copy_failed: "Could not copy to clipboard.",
     drop_hint: "Drop a markdown file or project folder here",
     untitled: "Untitled",
-    plantuml_error: "PlantUML encode error",
+    plantuml_error: "PlantUML error",
     mermaid_error: "Mermaid error",
     folder_link_unavailable: "Folder linking is not available in this browser. Try Chrome or Edge.",
     folder_not_contain: "That folder does not contain the file you have open. Pick a parent folder (for example your project root) that contains this file.",
@@ -140,13 +140,12 @@ const I18N: Record<Locale, Record<string, string>> = {
     fit_width: "\u9002\u5e94\u5bbd\u5ea6",
     convert_tabs: "Tab \u8f6c\u7a7a\u683c",
     tab_size: "Tab \u5927\u5c0f",
-    image_format: "\u56fe\u7247\u683c\u5f0f",
     copy_code: "\u590d\u5236\u4ee3\u7801",
     copied: "\u5df2\u590d\u5236",
     copy_failed: "\u65e0\u6cd5\u590d\u5236\u5230\u526a\u8d34\u677f\u3002",
     drop_hint: "\u5c06 Markdown \u6587\u4ef6\u6216\u9879\u76ee\u6587\u4ef6\u5939\u62d6\u5230\u8fd9\u91cc",
     untitled: "\u672a\u547d\u540d",
-    plantuml_error: "PlantUML \u7f16\u7801\u9519\u8bef",
+    plantuml_error: "PlantUML \u6e32\u67d3\u9519\u8bef",
     mermaid_error: "Mermaid \u9519\u8bef",
     folder_link_unavailable: "\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u6587\u4ef6\u5939\u5173\u8054\u3002\u8bf7\u4f7f\u7528 Chrome \u6216 Edge\u3002",
     folder_not_contain: "\u8be5\u6587\u4ef6\u5939\u4e0d\u5305\u542b\u5f53\u524d\u6253\u5f00\u7684\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u4e00\u4e2a\u5305\u542b\u8be5\u6587\u4ef6\u7684\u7236\u6587\u4ef6\u5939\uff08\u4f8b\u5982\u9879\u76ee\u6839\u76ee\u5f55\uff09\u3002",
@@ -236,36 +235,57 @@ function ensureMermaid(): Promise<MermaidAPI> {
   return mermaidLoadPromise;
 }
 
-/** CJS interop varies by bundler; resolve `encode` from named export or `default.encode`. */
-function resolvePlantumlEncode(): (diagram: string) => string {
-  const mod = plantumlEncoderPkg as unknown as Record<string, unknown>;
+type PlantumlCoreApi = typeof import("@plantuml/core");
 
-  if (typeof mod.encode === "function") {
-    return mod.encode as (diagram: string) => string;
-  }
-  const d = mod.default;
-  if (typeof d === "function") {
-    return d as (diagram: string) => string;
-  }
-  if (d && typeof d === "object") {
-    const dObj = d as Record<string, unknown>;
-    if (typeof dObj.encode === "function") {
-      return dObj.encode as (diagram: string) => string;
+function loadClassicScript(src: string, marker: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[${marker}]`);
+    if (existing) {
+      if (existing.dataset.loaded === "1") {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      return;
     }
-  }
-  throw new Error("plantuml-encoder: could not resolve encode()");
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = false;
+    script.setAttribute(marker, "1");
+    script.onload = () => {
+      script.dataset.loaded = "1";
+      if (!(window as unknown as { Viz?: unknown }).Viz) {
+        reject(new Error("viz-global.js did not expose Viz"));
+        return;
+      }
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
 }
 
-const plantumlEncode = resolvePlantumlEncode();
+/** Lazy-load official in-browser PlantUML (~several MB); viz-global must be a classic script. */
+let plantumlLoadPromise: Promise<PlantumlCoreApi> | null = null;
 
-const PLANTUML_BASE = "https://www.plantuml.com/plantuml";
-
-/** Current PlantUML image format; read by the markdown renderer. */
-let plantumlOutputFormat: "svg" | "png" = "svg";
+function ensurePlantuml(): Promise<PlantumlCoreApi> {
+  plantumlLoadPromise ??= (async () => {
+    await loadClassicScript(vizGlobalUrl, "data-plantuml-viz");
+    return import(/* @vite-ignore */ plantumlEngineUrl) as Promise<PlantumlCoreApi>;
+  })();
+  return plantumlLoadPromise;
+}
 
 /** Queue of mermaid diagrams to render after marked.parse(); cleared at the start of each render(). */
 let mermaidQueue: Array<{ id: string; source: string }> = [];
 let mermaidRenderSeq = 0;
+
+/** Queue of PlantUML diagrams to render after marked.parse(); cleared at the start of each render(). */
+let plantumlQueue: Array<{ id: string; source: string }> = [];
+
+/** Serialize PlantUML renders: the TeaVM engine overwrites shared state if called concurrently. */
+let plantumlRenderChain: Promise<void> = Promise.resolve();
 
 function normalizePlantUmlSource(text: string): string {
   let t = text.trim();
@@ -275,18 +295,44 @@ function normalizePlantUmlSource(text: string): string {
   return `@startuml\n${t}\n@enduml`;
 }
 
-function plantumlDataUrl(source: string, format: "svg" | "png"): string {
-  const encoded = plantumlEncode(normalizePlantUmlSource(source));
-  return `${PLANTUML_BASE}/${format}/${encoded}`;
+function renderPlantUmlSvg(source: string): Promise<string> {
+  const lines = normalizePlantUmlSource(source).split(/\r\n|\r|\n/);
+  const run = async (): Promise<string> => {
+    const api = await ensurePlantuml();
+    return new Promise((resolve, reject) => {
+      api.renderToString(
+        lines,
+        (svg) => resolve(svg.replace(/<\?xml[^?]*\?>/i, "").trim()),
+        (message) => reject(new Error(message)),
+      );
+    });
+  };
+  const next = plantumlRenderChain.then(run, run);
+  plantumlRenderChain = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
 }
 
-function renderPlantUmlBlock(source: string, format: "svg" | "png"): string {
-  const url = plantumlDataUrl(source, format);
-  const safeUrl = DOMPurify.sanitize(url, { ALLOWED_URI_REGEXP: /^https?:/i });
-  const alt = "PlantUML diagram (rendered via plantuml.com)";
-  return `<figure class="plantuml-block">
-  <img src="${safeUrl}" alt="${alt}" loading="lazy" />
-</figure>`;
+function queuePlantUmlBlock(source: string): string {
+  const id = `plantuml-block-${plantumlQueue.length}`;
+  plantumlQueue.push({ id, source });
+  return `<figure class="plantuml-block" id="${id}"></figure>`;
+}
+
+async function fillPlantumlQueue(root: HTMLElement, isCurrent: () => boolean): Promise<void> {
+  for (const item of plantumlQueue) {
+    if (!isCurrent()) return;
+    const el = root.querySelector<HTMLElement>(`#${CSS.escape(item.id)}`);
+    if (!el) continue;
+    try {
+      el.innerHTML = await renderPlantUmlSvg(item.source);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      el.innerHTML = `<p class="plantuml-error">${_t("plantuml_error")}: ${escapeHtml(msg)}</p>`;
+    }
+  }
 }
 
 function escapeHtml(s: string): string {
@@ -1327,23 +1373,84 @@ const MDV_TRANSFER_STORE = "pending";
 const MDV_WORKSPACE_STORE = "workspace";
 const MDV_WORKSPACE_SESSION_PARAM = "mdvSession";
 const MDV_WORKSPACE_SESSION_STORAGE_KEY = "md-viewer-workspace-session";
+const MDV_WORKSPACE_SESSION_OWNER_PREFIX = "md-viewer-workspace-session-owner:";
 let isNewWorkspaceSession = false;
 let clonedWorkspaceSessionId: string | null = null;
+let workspaceTabId: string | null = null;
+
+function createWorkspaceSessionId(): string {
+  return crypto.randomUUID();
+}
+
+function workspaceSessionOwnerKey(sessionId: string): string {
+  return MDV_WORKSPACE_SESSION_OWNER_PREFIX + sessionId;
+}
+
+function peekWorkspaceSessionOwner(sessionId: string): { tabId: string; ts: number } | null {
+  try {
+    const raw = localStorage.getItem(workspaceSessionOwnerKey(sessionId));
+    if (!raw) return null;
+    const owner = JSON.parse(raw) as { tabId?: unknown; ts?: unknown };
+    if (!owner || typeof owner.tabId !== "string" || typeof owner.ts !== "number") return null;
+    return { tabId: owner.tabId, ts: owner.ts };
+  } catch {
+    return null;
+  }
+}
+
+function isWorkspaceSessionLiveInAnotherTab(sessionId: string): boolean {
+  const owner = peekWorkspaceSessionOwner(sessionId);
+  if (!owner || owner.tabId === workspaceTabId) return false;
+  return Date.now() - owner.ts < 120000;
+}
+
+function claimWorkspaceSession(sessionId: string): void {
+  try {
+    localStorage.setItem(workspaceSessionOwnerKey(sessionId), JSON.stringify({ tabId: workspaceTabId, ts: Date.now() }));
+  } catch {
+    /* ignore quota / private-mode failures */
+  }
+}
+
+function releaseWorkspaceSession(sessionId: string): void {
+  try {
+    const owner = peekWorkspaceSessionOwner(sessionId);
+    if (owner && owner.tabId === workspaceTabId) localStorage.removeItem(workspaceSessionOwnerKey(sessionId));
+  } catch {
+    /* ignore */
+  }
+}
+
+function adoptWorkspaceSession(sessionId: string): void {
+  claimWorkspaceSession(sessionId);
+  window.setInterval(() => claimWorkspaceSession(sessionId), 1000);
+  window.addEventListener("pagehide", () => releaseWorkspaceSession(sessionId));
+  window.addEventListener("beforeunload", () => releaseWorkspaceSession(sessionId));
+}
 
 function getWorkspaceSessionId(): string {
+  workspaceTabId = createWorkspaceSessionId();
   const querySessionId = new URLSearchParams(window.location.search).get(MDV_WORKSPACE_SESSION_PARAM);
   if (querySessionId) {
     isNewWorkspaceSession = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY) !== querySessionId;
     sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, querySessionId);
+    adoptWorkspaceSession(querySessionId);
     return querySessionId;
   }
   const storedSessionId = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY);
   const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-  if (storedSessionId && navigation?.type !== "navigate" && navigation?.type !== "reload") return storedSessionId;
-  if (storedSessionId && navigation?.type === "navigate") clonedWorkspaceSessionId = storedSessionId;
-  const sessionId = crypto.randomUUID();
+  const navType = navigation?.type;
+  const liveInOtherTab = !!(storedSessionId && isWorkspaceSessionLiveInAnotherTab(storedSessionId));
+  // Same-tab reload keeps the workspace. Duplicate copies sessionStorage while the original tab is still alive.
+  if (storedSessionId && navType === "reload" && !liveInOtherTab) {
+    adoptWorkspaceSession(storedSessionId);
+    return storedSessionId;
+  }
+  if (storedSessionId) clonedWorkspaceSessionId = storedSessionId;
+  const sessionId = createWorkspaceSessionId();
   isNewWorkspaceSession = true;
   sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, sessionId);
+  adoptWorkspaceSession(sessionId);
   return sessionId;
 }
 
@@ -2261,12 +2368,7 @@ marked.use({
     code(token: Tokens.Code): string | false {
       const lang = (token.lang ?? "").toLowerCase().split(/\s+/)[0];
       if (lang === "plantuml" || lang === "puml" || lang === "{uml}") {
-        try {
-          return renderPlantUmlBlock(token.text, plantumlOutputFormat);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          return `<p class="plantuml-error">${_t("plantuml_error")}: ${escapeHtml(msg)}</p>`;
-        }
+        return queuePlantUmlBlock(token.text);
       }
       if (lang === "mermaid") {
         const id = `mermaid-block-${mermaidQueue.length}`;
@@ -2496,15 +2598,6 @@ function mount(): void {
               </select>
             </div>
           </div>
-          <div class="settings-row" role="group" aria-labelledby="image-format-label">
-            <span id="image-format-label" class="settings-row__label" data-i18n="image_format">Image Format</span>
-            <div class="settings-row__control">
-              <select id="uml-format" aria-labelledby="image-format-label" data-i18n="image_format" data-i18n-attr="aria-label">
-                <option value="svg" selected>SVG</option>
-                <option value="png">PNG</option>
-              </select>
-            </div>
-          </div>
         </div>
         </div>
       </div>
@@ -2515,7 +2608,6 @@ function mount(): void {
   const sourceFileLabel = document.querySelector<HTMLLabelElement>("#source-file-label")!;
   const preview = document.querySelector<HTMLElement>("#preview")!;
   const previewWrap = document.querySelector<HTMLElement>("#preview-wrap")!;
-  const formatSelect = document.querySelector<HTMLSelectElement>("#uml-format")!;
   const fileOpenInput = document.querySelector<HTMLInputElement>("#file-open")!;
   const btnOpenFile = document.querySelector<HTMLButtonElement>("#btn-open-file")!;
   const btnReopenFile = document.querySelector<HTMLButtonElement>("#btn-reopen-file")!;
@@ -3675,7 +3767,6 @@ function mount(): void {
   }
   
   preview.classList.add("fit-width");
-  plantumlOutputFormat = "svg";
 
   fitWidthCheckbox.addEventListener("change", () => {
     preview.classList.toggle("fit-width", fitWidthCheckbox.checked);
@@ -3953,6 +4044,7 @@ function mount(): void {
   ): Promise<void> {
     headingCount = {};
     mermaidQueue = [];
+    plantumlQueue = [];
     revokePreviewAssetObjectUrls();
     const documentFormat = documentFormatForPath(docFileName);
 
@@ -3961,18 +4053,11 @@ function mount(): void {
         ADD_TAGS: ["img", "button", "div", "article", "section", "figure", "figcaption", "pre", "code"],
         ADD_ATTR: ["loading", "target", "rel", "id", "role", "aria-selected", "data-tab", "data-tabset", "class"],
       };
-      try {
-        const fig = renderPlantUmlBlock(docSource, plantumlOutputFormat);
-        if (renderSeq !== documentRenderSeq) return;
-        preview.innerHTML = DOMPurify.sanitize(`<article class="preview-plantuml-file">${fig}</article>`, sanitizeOpts);
-      } catch (e) {
-        if (renderSeq !== documentRenderSeq) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        preview.innerHTML = DOMPurify.sanitize(
-          `<article class="preview-plantuml-file"><p class="plantuml-error">${_t("plantuml_error")}: ${escapeHtml(msg)}</p></article>`,
-          sanitizeOpts,
-        );
-      }
+      const fig = queuePlantUmlBlock(docSource);
+      if (renderSeq !== documentRenderSeq) return;
+      preview.innerHTML = DOMPurify.sanitize(`<article class="preview-plantuml-file">${fig}</article>`, sanitizeOpts);
+      await fillPlantumlQueue(preview, () => renderSeq === documentRenderSeq);
+      if (renderSeq !== documentRenderSeq) return;
       activatePlantumlBlocks();
       return;
     }
@@ -4197,6 +4282,11 @@ function mount(): void {
       });
     });
 
+    if (plantumlQueue.length > 0) {
+      await fillPlantumlQueue(preview, () => renderSeq === documentRenderSeq);
+      if (renderSeq !== documentRenderSeq) return;
+    }
+
     activatePlantumlBlocks();
     if (previewFindBar.classList.contains("visible")) pvFindAll();
   }
@@ -4259,10 +4349,6 @@ function mount(): void {
 
   // Initial render (handles tab copy where browser restores textarea but not preview)
   scheduleRender();
-  formatSelect.addEventListener("change", () => {
-    plantumlOutputFormat = formatSelect.value === "png" ? "png" : "svg";
-    scheduleRender();
-  });
 
   /** `types` may be a DOMStringList (no `.includes`) in some browsers. */
   function hasFilePayload(dt: DataTransfer | null): boolean {

@@ -9,12 +9,12 @@ A lightweight, browser-based document editor and renderer for Markdown, PlantUML
 - **Multi-format document rendering**: Markdown (GFM), PlantUML diagrams, and syntax-highlighted source code for 100+ programming languages
 - **Real-time preview**: Live rendering with debounced updates for smooth editing experience
 - **Built-in source editor**: Full-featured text editing with syntax highlighting, find & replace, and direct file save
-- **PlantUML integration**: Render UML diagrams via the official PlantUML server with automatic `@startuml`/`@enduml` wrapping
+- **PlantUML integration**: Render UML diagrams in the browser with `@plantuml/core` (no plantuml.com) and automatic `@startuml`/`@enduml` wrapping
 - **MyST (Markedly Structured Text) support**: `{tab-set}`, `{tab-item}`, `{grid}`, `{grid-item}` directives
 - **File system access**: Drag-and-drop or file picker to load files; direct save with File System Access API (Chrome/Edge)
 - **Find & Replace**: In-editor search with regex support, case-sensitive matching, and match navigation
 - **Flexible layout**: Resizable split panels with toggleable Source/Preview views
-- **Diagram output options**: SVG or PNG format for PlantUML and Mermaid diagrams
+- **Diagram output**: PlantUML and Mermaid diagrams render as SVG
 - **Smart link handling**: Internal anchors stay in preview; external links open in new tabs; relative file links open in new windows with workspace folder linking
 - **Theme support**: Dark/light mode following system preferences
 - **Responsive design**: Adaptive layout for various screen sizes
@@ -29,7 +29,7 @@ markdown-viewer.html   <- Double-click to open in browser
 
 Requirements:
 - Modern browser (Chrome, Firefox, Edge, Safari)
-- Internet connection (for loading CDN libraries and PlantUML rendering)
+- Internet connection (for loading CDN libraries in standalone HTML; PlantUML itself is rendered in the browser)
 
 LaTeX support in the current project:
 - Math preview is rendered in-browser (KaTeX subset), not a full TeX engine.
@@ -135,7 +135,7 @@ Notes:
 | Filename ends with | Preview behavior |
 |--------------------|------------------|
 | `.md`, `.mdx`, `.markdown`, `.mdown`, `.mkd`, `.qmd`, `.rmd`, `.mdc` | Full Markdown (GFM), MyST, PlantUML (fenced blocks), Mermaid |
-| `.puml`, `.plantuml` | **Whole file** treated as PlantUML source (same server as fenced blocks; `@startuml` optional — wrapped when missing) |
+| `.puml`, `.plantuml` | **Whole file** treated as PlantUML source (same in-browser engine as fenced blocks; `@startuml` optional — wrapped when missing) |
 | e.g. `.py`, `.ts`, `.json`, `.toml`, `.am` (makefile grammar), `.spec` (YAML grammar), … | Whole buffer as **one code block** with Prism when bundled; **not** parsed as Markdown |
 | Exact basename (case-insensitive): `Dockerfile`, `Containerfile`, `Jenkinsfile`, `Makefile`, `GNUmakefile`, `CMakeLists.txt` | **docker**, **docker**, **groovy**, **bash**, **bash**, **cmake** (whole-file source preview) |
 | No extension, or a **suffix without** a bundled highlighter map | Same **source preview**; if the first non-empty line is a **shebang** (`#!/usr/bin/bash`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`, `#!/usr/bin/go`, …), Prism language is inferred when it matches a bundled grammar (bash, python, JavaScript, TypeScript, TSX, PowerShell, Go) |
@@ -167,7 +167,7 @@ The find bar supports case-sensitive matching and regular expressions.
 
 ### PlantUML Syntax
 
-You can open **`.puml` or `.plantuml` files** directly: the editor shows the raw source and the preview renders the diagram via the same PlantUML server as fenced blocks (including automatic `@startuml` / `@enduml` when those tags are omitted).
+You can open **`.puml` or `.plantuml` files** directly: the editor shows the raw source and the preview renders the diagram in the browser (including automatic `@startuml` / `@enduml` when those tags are omitted).
 
 Use fenced code blocks with `plantuml`, `puml`, or `{uml}` language:
 
@@ -282,7 +282,7 @@ markdown-plantuml-viewer/
 ├── src/
 │   ├── main.ts             # Application code
 │   ├── style.css           # Styles
-│   ├── plantuml-encoder.d.ts
+│   ├── plantuml-core.d.ts
 │   └── file-system-access.d.ts
 ├── webview2/               # WebView2 desktop app source (Windows only)
 ├── dist/                   # Build output (generated)
@@ -295,7 +295,7 @@ markdown-plantuml-viewer/
 |---------|---------|
 | marked | Markdown to HTML conversion |
 | dompurify | HTML sanitization (XSS protection) |
-| plantuml-encoder | PlantUML diagram encoding |
+| @plantuml/core | In-browser PlantUML rendering (SVG) |
 | vite | Build tool and dev server |
 | typescript | Type checking |
 
