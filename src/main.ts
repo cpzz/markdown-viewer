@@ -2542,7 +2542,10 @@ function mount(): void {
         <div class="source-file-header">
           <label id="source-file-label" for="source" class="source-file-label" title="Markdown source">Markdown source</label>
         </div>
-        <textarea id="source" spellcheck="false" data-i18n="markdown_source" data-i18n-attr="aria-label"></textarea>
+        <div class="source-editor">
+          <div class="source-highlight" id="source-highlight" aria-hidden="true"></div>
+          <textarea id="source" spellcheck="false" data-i18n="markdown_source" data-i18n-attr="aria-label"></textarea>
+        </div>
       </section>
       <div class="resizer" id="resizer"></div>
       <section class="panel" id="panel-preview">
@@ -2605,6 +2608,7 @@ function mount(): void {
   `;
 
   const source = document.querySelector<HTMLTextAreaElement>("#source")!;
+  const sourceHighlight = document.querySelector<HTMLElement>("#source-highlight")!;
   const sourceFileLabel = document.querySelector<HTMLLabelElement>("#source-file-label")!;
   const preview = document.querySelector<HTMLElement>("#preview")!;
   const previewWrap = document.querySelector<HTMLElement>("#preview-wrap")!;
@@ -3280,6 +3284,8 @@ function mount(): void {
 
   let matches: Array<{ index: number; length: number }> = [];
   let currentMatchIndex = -1;
+  let sourceHlRaf = 0;
+  let mirroredSourceText: string | null = null;
 
   function escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -3310,6 +3316,110 @@ function mount(): void {
       return replacement.charAt(0).toUpperCase() + replacement.slice(1);
     }
     return replacement;
+  }
+
+  function isAsciiWordChar(ch: string | undefined): boolean {
+    return !!ch && /[A-Za-z0-9_]/.test(ch);
+  }
+
+  function shouldUseWholeWord(text: string, start: number, end: number, selected: string): boolean {
+    if (!/^[A-Za-z0-9_]+$/.test(selected)) return false;
+    return !isAsciiWordChar(text[start - 1]) && !isAsciiWordChar(text[end]);
+  }
+
+  function collectLiteralMatches(text: string, needle: string, wholeWord: boolean): Array<{ index: number; length: number }> {
+    const out: Array<{ index: number; length: number }> = [];
+    if (!needle) return out;
+    let from = 0;
+    while (from <= text.length - needle.length) {
+      const index = text.indexOf(needle, from);
+      if (index === -1) break;
+      const end = index + needle.length;
+      if (!wholeWord || (!isAsciiWordChar(text[index - 1]) && !isAsciiWordChar(text[end]))) {
+        out.push({ index, length: needle.length });
+      }
+      from = index + Math.max(needle.length, 1);
+      if (out.length >= 5000) break;
+    }
+    return out;
+  }
+
+  function getFindSeedFromSource(): string {
+    const selected = source.value.slice(source.selectionStart, source.selectionEnd);
+    if (!selected || selected.length > 500 || !selected.trim()) return "";
+    if (selected.includes("\n")) {
+      const first = selected.split("\n")[0] ?? "";
+      return first.length > 0 && first.length <= 500 ? first : "";
+    }
+    return selected;
+  }
+
+  function layoutSourceHighlight(): void {
+    sourceHighlight.style.width = `${source.clientWidth}px`;
+    sourceHighlight.style.height = `${source.clientHeight}px`;
+    sourceHighlight.scrollTop = source.scrollTop;
+    sourceHighlight.scrollLeft = source.scrollLeft;
+  }
+
+  function clearSourceHighlightPaint(): void {
+    if (mirroredSourceText !== "") {
+      sourceHighlight.replaceChildren();
+      mirroredSourceText = "";
+    }
+  }
+
+  function paintSourceHighlightRanges(ranges: Array<{ index: number; length: number }>): void {
+    layoutSourceHighlight();
+    if (ranges.length === 0) {
+      clearSourceHighlightPaint();
+      return;
+    }
+
+    const text = source.value;
+    let html = "";
+    let last = 0;
+    for (const { index, length } of ranges) {
+      html += escapeHtml(text.slice(last, index));
+      html += `<mark class="src-hl">${escapeHtml(text.slice(index, index + length))}</mark>`;
+      last = index + length;
+    }
+    html += escapeHtml(text.slice(last));
+    if (!text.endsWith("\n")) html += "\n";
+    sourceHighlight.innerHTML = html;
+    mirroredSourceText = text;
+    layoutSourceHighlight();
+  }
+
+  function refreshSourceHighlights(): void {
+    const start = source.selectionStart;
+    const end = source.selectionEnd;
+    if (start === end) {
+      paintSourceHighlightRanges([]);
+      return;
+    }
+    const selected = source.value.slice(start, end);
+    if (!selected.trim() || selected.includes("\n") || selected.length > 200) {
+      paintSourceHighlightRanges([]);
+      return;
+    }
+    const occ = collectLiteralMatches(
+      source.value,
+      selected,
+      shouldUseWholeWord(source.value, start, end, selected),
+    );
+    if (occ.length < 2) {
+      paintSourceHighlightRanges([]);
+      return;
+    }
+    paintSourceHighlightRanges(occ);
+  }
+
+  function scheduleSourceHighlights(): void {
+    if (sourceHlRaf) return;
+    sourceHlRaf = requestAnimationFrame(() => {
+      sourceHlRaf = 0;
+      refreshSourceHighlights();
+    });
   }
 
   function findAllMatches(): void {
@@ -3356,6 +3466,8 @@ function mount(): void {
     if (targetScroll > 0) {
       source.scrollTop = targetScroll;
     }
+    layoutSourceHighlight();
+    refreshSourceHighlights();
   }
 
   function findNext(): void {
@@ -3441,7 +3553,13 @@ function mount(): void {
     }
   }
 
-  function showFindBar(withReplace?: boolean): void {
+  function showFindBar(withReplace?: boolean, seedFromSelection = true): void {
+    const selStart = source.selectionStart;
+    if (seedFromSelection) {
+      const seed = getFindSeedFromSource();
+      if (seed) findInput.value = seed;
+    }
+
     findReplaceBar.classList.add("visible");
     if (withReplace === false) {
       replaceRow.style.display = "none";
@@ -3450,6 +3568,14 @@ function mount(): void {
       replaceRow.style.display = "flex";
       btnToggleReplace.innerHTML = ICON_CHEVRON_UP;
     }
+    findAllMatches();
+    if (matches.length > 0) {
+      const idx = matches.findIndex((m) => m.index <= selStart && selStart < m.index + m.length);
+      currentMatchIndex = idx >= 0 ? idx : seedFromSelection ? 0 : -1;
+    } else {
+      currentMatchIndex = -1;
+    }
+    updateMatchInfo();
     findInput.focus();
     findInput.select();
     requestAnimationFrame(syncControlsWidth);
@@ -3537,7 +3663,8 @@ function mount(): void {
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "f") {
       e.preventDefault();
-      if (previewWrap.contains(document.activeElement) || previewWrap.matches(":hover")) {
+      const inSource = document.activeElement === source || panelSource.contains(document.activeElement);
+      if (!inSource && (previewWrap.contains(document.activeElement) || previewWrap.matches(":hover"))) {
         showPreviewFindBar();
       } else {
         showFindBar(false);
@@ -3545,11 +3672,33 @@ function mount(): void {
     } else if ((e.ctrlKey || e.metaKey) && e.key === "h") {
       e.preventDefault();
       showFindBar(true);
+    } else if (e.key === "F3") {
+      e.preventDefault();
+      if (previewFindBar.classList.contains("visible") && !findReplaceBar.classList.contains("visible")) {
+        e.shiftKey ? pvPrev() : pvNext();
+      } else {
+        if (!findReplaceBar.classList.contains("visible")) showFindBar(false, false);
+        e.shiftKey ? findPrev() : findNext();
+      }
     } else if (e.key === "Escape" && findReplaceBar.classList.contains("visible")) {
       e.preventDefault();
       hideFindBar();
     }
   });
+
+  source.addEventListener("scroll", layoutSourceHighlight);
+  source.addEventListener("input", scheduleSourceHighlights);
+  source.addEventListener("select", scheduleSourceHighlights);
+  source.addEventListener("dblclick", () => {
+    requestAnimationFrame(() => refreshSourceHighlights());
+  });
+  document.addEventListener("selectionchange", () => {
+    if (document.activeElement !== source) return;
+    scheduleSourceHighlights();
+  });
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => layoutSourceHighlight()).observe(source);
+  }
   // ─────────────────────────────────────────────────────────
 
   // ── Preview find (no replace) ──────────────────────────────
@@ -3638,6 +3787,8 @@ function mount(): void {
   }
 
   function showPreviewFindBar(): void {
+    const sel = (window.getSelection()?.toString() ?? "").replace(/\r?\n/g, " ");
+    if (sel.trim() && sel.length <= 500) pvFindInput.value = sel;
     previewFindBar.classList.add("visible");
     pvFindInput.focus();
     pvFindInput.select();
@@ -4328,6 +4479,7 @@ function mount(): void {
     if (!initialRestoreComplete) return;
     observedSourceValue = source.value;
     updateSourceFileLabel();
+    scheduleSourceHighlights();
     if (t) clearTimeout(t);
     t = setTimeout(() => {
       void render();

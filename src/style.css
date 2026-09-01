@@ -550,21 +550,66 @@ main.single-panel .resizer { display: none; }
 }
 
 /* Source editor */
-#source {
+.source-editor {
+  position: relative;
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+.source-highlight,
+#source {
   margin: 0;
   padding: 1rem;
   border: none;
-  resize: none;
-  overflow-y: auto;
   font-family: "SF Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 0.8125rem;
+  font-variant-ligatures: none;
   line-height: 1.5;
-  background: var(--surface);
-  color: var(--fg);
-  outline: none;
   tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+.source-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  color: transparent;
+  background: transparent;
+  z-index: 0;
+}
+.source-highlight mark {
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 2px;
+  color: transparent;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  font: inherit;
+  line-height: inherit;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+#source {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  overflow-y: auto;
+  appearance: none;
+  background: transparent;
+  color: var(--fg);
+  caret-color: var(--fg);
+  outline: none;
+}
+#source::selection {
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
 /* Find/Replace bar */
