@@ -84,14 +84,14 @@ ipcMain.handle('dialog:openFile', async () => {
   return { filePath: result.filePaths[0] };
 });
 
-// IPC: 保存文件对话框 + 写入
-ipcMain.handle('dialog:saveFile', async (_event, content: string) => {
+// IPC: 保存文件对话框 + 写入(仅在还没有文件路径时才会被调用)
+ipcMain.handle('dialog:saveFile', async (_event, content: string, suggestedName?: string) => {
   const result = await dialog.showSaveDialog(mainWindow!, {
     filters: [
       { name: 'Markdown 文件', extensions: ['md'] },
       { name: '所有文件', extensions: ['*'] },
     ],
-    defaultPath: 'untitled.md',
+    defaultPath: suggestedName || 'untitled.md',
   });
   if (result.canceled || !result.filePath) {
     return { filePath: null };
@@ -102,7 +102,8 @@ ipcMain.handle('dialog:saveFile', async (_event, content: string) => {
 
 // IPC: 读取文件
 ipcMain.handle('file:read', async (_event, filePath: string) => {
-  return fs.readFileSync(filePath, 'utf-8');
+  const content = fs.readFileSync(filePath, 'utf-8');
+  return content;
 });
 
 // IPC: 写入文件
@@ -117,7 +118,7 @@ ipcMain.on('session:set', (event, state: unknown) => {
 });
 
 // IPC: 消息对话框
-ipcMain.handle('dialog:showMessageBox', async (_event, options: { type: string; title: string; message: string; buttons: string[]; cancelId: number }) => {
+ipcMain.handle('dialog:showMessageBox', async (_event, options: { type: 'none' | 'info' | 'error' | 'question' | 'warning'; title: string; message: string; buttons: string[]; cancelId: number }) => {
   const result = await dialog.showMessageBox(mainWindow!, options);
   return result;
 });

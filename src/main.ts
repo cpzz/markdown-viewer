@@ -3978,6 +3978,7 @@ function mount(): void {
     const showSource = btnToggleSource.classList.contains("active");
     const showPreview = btnTogglePreview.classList.contains("active");
 
+    const wasSourceHidden = panelSource.style.display === "none";
     panelSource.style.display = showSource ? "" : "none";
     panelPreview.style.display = showPreview ? "" : "none";
     resizer.style.display = showSource && showPreview ? "" : "none";
@@ -3986,6 +3987,11 @@ function mount(): void {
       main.classList.remove("single-panel");
     } else {
       main.classList.add("single-panel");
+    }
+
+    if (showSource && wasSourceHidden) {
+      // textarea 从 display:none 恢复后,高亮层尺寸需要重新同步。
+      layoutSourceHighlight();
     }
   }
 
@@ -4523,12 +4529,13 @@ function mount(): void {
 
   let lastSavedContent = DEFAULT_MD;
 
-  /** 保存按钮仅在修改后使能；重新打开只要有可重新加载的源就保持使能。 */
+  /** 保存与重新打开都只在存在未保存改动时使能；重新打开还要求有可重新读取的来源，
+   *  否则点击后不会有任何动作。 */
   function updateToolbarButtons(): void {
     const modified = isContentModified();
-    btnSaveFile.disabled = !modified;
     const canReload = isElectron ? !!electronFilePath : !!fileHandle;
-    btnReopenFile.disabled = !canReload;
+    btnSaveFile.disabled = !modified;
+    btnReopenFile.disabled = !modified || !canReload;
   }
 
   /** Electron renderer 重载时保留当前应用实例的编辑会话。 */
@@ -4948,7 +4955,12 @@ function mount(): void {
   );
 
   function isContentModified(): boolean {
-    return source.value !== lastSavedContent;
+    // textarea.value 会把 CRLF 规范化为 LF；从磁盘读入的文本需按同样规则比较，
+    // 否则 CRLF 文件一打开就会被误判为已修改，保存/重新打开按钮会错误地保持使能。
+    const saved = lastSavedContent.includes("\r")
+      ? lastSavedContent.replace(/\r\n?/g, "\n")
+      : lastSavedContent;
+    return source.value !== saved;
   }
 
   function loadFileIntoEditor(file: File): void {
@@ -5172,15 +5184,20 @@ function mount(): void {
     // Electron environment
     if (isElectron && window.electronAPI) {
       try {
-        const result = await window.electronAPI.saveFile(content);
-        if (result.filePath) {
+        if (electronFilePath) {
+          // 已有文件路径时直接写回原文件,不再弹原生保存框 —— 与 web 模式写回原文件句柄的行为一致。
+          await window.electronAPI.writeFile(electronFilePath, content);
+          lastSavedContent = content;
+        } else {
+          const result = await window.electronAPI.saveFile(content, currentFileName);
+          if (!result.filePath) return;
           electronFilePath = result.filePath;
           currentFileName = result.filePath.split('\\').pop()?.split('/').pop() || currentFileName;
           lastSavedContent = content;
-          fileOpened = true;
-          updateToolbarButtons();
-          saveElectronSession();
         }
+        fileOpened = true;
+        updateToolbarButtons();
+        saveElectronSession();
       } catch (e) {
         console.error('Failed to save file in Electron:', e);
       }
@@ -5252,9 +5269,13 @@ function mount(): void {
     updateToolbarButtons();
   }
 
-  btnReopenFile.addEventListener("click", () => void reopenFile());
+  btnReopenFile.addEventListener("click", async () => {
+    await reopenFile();
+  });
   btnFormatFile.addEventListener("click", () => formatFile());
-  btnSaveFile.addEventListener("click", () => void saveFile());
+  btnSaveFile.addEventListener("click", async () => {
+    await saveFile();
+  });
   fileOpenInput.addEventListener("change", () => {
     const file = fileOpenInput.files?.[0];
     const inputPath = fileOpenInput.value;
