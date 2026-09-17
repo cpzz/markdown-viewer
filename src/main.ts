@@ -1378,8 +1378,14 @@ let isNewWorkspaceSession = false;
 let clonedWorkspaceSessionId: string | null = null;
 let workspaceTabId: string | null = null;
 
-function createWorkspaceSessionId(): string {
-  return crypto.randomUUID();
+/** `crypto.randomUUID()` 只在安全上下文(https/localhost)可用，通过 http 访问时需退回 getRandomValues。 */
+function createUniqueId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function workspaceSessionOwnerKey(sessionId: string): string {
@@ -1429,7 +1435,7 @@ function adoptWorkspaceSession(sessionId: string): void {
 }
 
 function getWorkspaceSessionId(): string {
-  workspaceTabId = createWorkspaceSessionId();
+  workspaceTabId = createUniqueId();
   const querySessionId = new URLSearchParams(window.location.search).get(MDV_WORKSPACE_SESSION_PARAM);
   if (querySessionId) {
     isNewWorkspaceSession = sessionStorage.getItem(MDV_WORKSPACE_SESSION_STORAGE_KEY) !== querySessionId;
@@ -1447,7 +1453,7 @@ function getWorkspaceSessionId(): string {
     return storedSessionId;
   }
   if (storedSessionId) clonedWorkspaceSessionId = storedSessionId;
-  const sessionId = createWorkspaceSessionId();
+  const sessionId = createUniqueId();
   isNewWorkspaceSession = true;
   sessionStorage.setItem(MDV_WORKSPACE_SESSION_STORAGE_KEY, sessionId);
   adoptWorkspaceSession(sessionId);
@@ -2487,7 +2493,7 @@ function mount(): void {
             <button type="button" class="open-menu__item" id="open-menu-dir" role="menuitem" data-i18n="open_directory" data-i18n-attr="aria-label">${ICON_FOLDER_PLUS}<span data-i18n="open_directory">Open Directory</span></button>
           </div>
         </div>
-        <button type="button" id="btn-reopen-file" class="btn btn--icon" data-i18n="reopen_file" data-i18n-attr="aria-label,title" disabled>${ICON_REFRESH_CCW}</button>
+        <button type="button" id="btn-reopen-file" class="btn btn--icon" data-i18n="reopen_file" data-i18n-attr="aria-label,title">${ICON_REFRESH_CCW}</button>
         <button type="button" id="btn-save-file" class="btn btn--icon" data-i18n="save_file" data-i18n-attr="aria-label,title">${ICON_SAVE}</button>
         <button type="button" id="btn-format-file" class="btn btn--icon" data-i18n="format_file" data-i18n-attr="aria-label,title">${ICON_LAYERS}</button>
         <span class="toolbar-separator"></span>
@@ -4529,13 +4535,10 @@ function mount(): void {
 
   let lastSavedContent = DEFAULT_MD;
 
-  /** 保存与重新打开都只在存在未保存改动时使能；重新打开还要求有可重新读取的来源，
-   *  否则点击后不会有任何动作。 */
+  /** 保存按钮仅在存在未保存改动时使能；重新加载按钮始终可用，
+   *  以便物理文件在外部被修改后手动拉取最新内容。 */
   function updateToolbarButtons(): void {
-    const modified = isContentModified();
-    const canReload = isElectron ? !!electronFilePath : !!fileHandle;
-    btnSaveFile.disabled = !modified;
-    btnReopenFile.disabled = !modified || !canReload;
+    btnSaveFile.disabled = !isContentModified();
   }
 
   /** Electron renderer 重载时保留当前应用实例的编辑会话。 */
@@ -4823,7 +4826,7 @@ function mount(): void {
     }
 
     const tab: PreviewLinkedTab = {
-      id: crypto.randomUUID(),
+      id: createUniqueId(),
       workspacePath,
       label: pathBasename(workspacePath),
       handle: targetHandle,
@@ -4861,7 +4864,7 @@ function mount(): void {
   }
 
   async function openLinkedFileInNewWindow(targetHandle: FileSystemFileHandle): Promise<void> {
-    const id = crypto.randomUUID();
+    const id = createUniqueId();
     try {
       await idbPutFileHandle(id, targetHandle);
     } catch (e) {
@@ -4871,7 +4874,7 @@ function mount(): void {
     }
     const url = new URL(window.location.href);
     url.searchParams.set("mdvOpen", id);
-    url.searchParams.set(MDV_WORKSPACE_SESSION_PARAM, crypto.randomUUID());
+    url.searchParams.set(MDV_WORKSPACE_SESSION_PARAM, createUniqueId());
     const child = window.open(url.toString(), "_blank");
     if (!child) {
       const useHere = confirm(_t("popup_blocked"));
